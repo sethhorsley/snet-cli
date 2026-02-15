@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/seth4242/snet/internal/api"
+	"github.com/seth4242/snet/internal/buildinfo"
 	"github.com/seth4242/snet/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -28,10 +30,18 @@ func init() {
 
 func runLogin(cmd *cobra.Command, args []string) error {
 	reader := bufio.NewReader(os.Stdin)
+	apiBase := GetAPIBase()
 
-	fmt.Println("Login to seth4242.net")
+	// Show appropriate URL based on mode
+	tokenURL := "https://seth4242.net/api_tokens"
+	if buildinfo.IsDevelopment() {
+		// Extract host from apiBase for the token URL
+		tokenURL = fmt.Sprintf("http://localhost:%d/api_tokens", getAPIPortFromBase(apiBase))
+	}
+
+	fmt.Println("Login to snet")
 	fmt.Println("")
-	fmt.Println("Create an API token at: https://seth4242.net/api_tokens")
+	fmt.Printf("Create an API token at: %s\n", tokenURL)
 	fmt.Println("")
 	fmt.Print("Enter your API token: ")
 
@@ -47,9 +57,9 @@ func runLogin(cmd *cobra.Command, args []string) error {
 
 	// Verify token by fetching accounts
 	fmt.Println("")
-	fmt.Println("Verifying token...")
+	fmt.Printf("Verifying token against %s...\n", apiBase)
 
-	client := api.NewClientWithToken(config.DefaultAPIBase, token)
+	client := api.NewClientWithToken(apiBase, token)
 	accounts, err := client.ListAccounts()
 	if err != nil {
 		return fmt.Errorf("failed to verify token: %w", err)
@@ -72,19 +82,31 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Print("Enter number: ")
 
-		var selection int
-		_, err := fmt.Scanf("%d", &selection)
+		selectionStr, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read selection: %w", err)
+		}
+		selection, err := strconv.Atoi(strings.TrimSpace(selectionStr))
 		if err != nil || selection < 1 || selection > len(accounts) {
 			return fmt.Errorf("invalid selection")
 		}
 		selectedAccount = accounts[selection-1]
 	}
 
-	// Save config
+	// Save config - use prefix_id for API calls
+	accountID := selectedAccount.PrefixID
+	if accountID == "" {
+		// Fallback to regular ID if prefix_id not available
+		accountID = selectedAccount.ID.String()
+	}
+
+	wildcardDefault := true
 	cfg := &config.Config{
-		APIToken:  token,
-		AccountID: selectedAccount.ID,
-		APIBase:   config.DefaultAPIBase,
+		APIToken:        token,
+		AccountID:       accountID,
+		APIBase:         apiBase,
+		DefaultProvider: "frp",            // Default to FRP for new logins
+		DefaultWildcard: &wildcardDefault, // Default to wildcard enabled
 	}
 
 	if err := config.Save(cfg); err != nil {
@@ -94,8 +116,22 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	fmt.Println("")
 	fmt.Println("Login successful!")
 	fmt.Printf("Account: %s (%s)\n", selectedAccount.Name, selectedAccount.Slug)
+	fmt.Printf("Default provider: %s\n", cfg.DefaultProvider)
+	fmt.Printf("Default wildcard: %v\n", cfg.WildcardDefault())
 	fmt.Println("")
-	fmt.Println("You can now use 'snet start --port 3000' to create a tunnel.")
+	fmt.Println("You can now use 'snet start 3000' to create a tunnel.")
+	fmt.Println("Wildcards are enabled by default. Use --no-wildcard to disable.")
 
 	return nil
+}
+
+// getAPIPortFromBase extracts the port from an API base URL
+func getAPIPortFromBase(apiBase string) int {
+	// Default to 3001 for development
+	var port int
+	_, err := fmt.Sscanf(apiBase, "http://localhost:%d", &port)
+	if err != nil {
+		return 3001
+	}
+	return port
 }

@@ -5,19 +5,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/seth4242/snet/internal/buildinfo"
 )
 
 const (
-	DefaultAPIBase = "https://seth4242.net/api/v1"
-	configDir      = ".snet"
-	configFile     = "config.json"
+	configDir  = ".snet"
+	configFile = "config.json"
 )
+
+// DefaultAPIBase returns the default API base URL based on build mode
+func DefaultAPIBase() string {
+	return buildinfo.GetAPIBase()
+}
 
 // Config holds the CLI configuration
 type Config struct {
-	APIToken  string `json:"api_token"`
-	AccountID string `json:"account_id"`
-	APIBase   string `json:"api_base"`
+	APIToken        string `json:"api_token"`
+	AccountID       string `json:"account_id"`
+	APIBase         string `json:"api_base"`
+	DefaultProvider string `json:"default_provider,omitempty"` // "frp" or "cloudflare", defaults to "frp"
+	DefaultWildcard *bool  `json:"default_wildcard,omitempty"` // Enable wildcard by default, defaults to true
 }
 
 // configPath returns the full path to the config file
@@ -51,10 +59,24 @@ func Load() (*Config, error) {
 
 	// Set default API base if not specified
 	if cfg.APIBase == "" {
-		cfg.APIBase = DefaultAPIBase
+		cfg.APIBase = DefaultAPIBase()
+	}
+
+	// Set default provider if not specified
+	if cfg.DefaultProvider == "" {
+		cfg.DefaultProvider = "frp"
 	}
 
 	return &cfg, nil
+}
+
+// WildcardDefault returns true if wildcard should be enabled by default
+// Returns true if not explicitly set to false
+func (c *Config) WildcardDefault() bool {
+	if c.DefaultWildcard == nil {
+		return true // Default to wildcard enabled
+	}
+	return *c.DefaultWildcard
 }
 
 // Save writes the config to disk
@@ -72,7 +94,12 @@ func Save(cfg *Config) error {
 
 	// Set default API base
 	if cfg.APIBase == "" {
-		cfg.APIBase = DefaultAPIBase
+		cfg.APIBase = DefaultAPIBase()
+	}
+
+	// Set default provider
+	if cfg.DefaultProvider == "" {
+		cfg.DefaultProvider = "frp"
 	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")

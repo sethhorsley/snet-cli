@@ -19,6 +19,7 @@ type Runner struct {
 	client       *api.Client
 	tunnel       *api.Tunnel
 	port         int
+	host         string
 	connectionID int
 	cmd          *exec.Cmd
 	ctx          context.Context
@@ -27,12 +28,16 @@ type Runner struct {
 }
 
 // NewRunner creates a new tunnel runner
-func NewRunner(client *api.Client, tunnel *api.Tunnel, port int) *Runner {
+func NewRunner(client *api.Client, tunnel *api.Tunnel, port int, host string) *Runner {
 	ctx, cancel := context.WithCancel(context.Background())
+	if host == "" {
+		host = "localhost"
+	}
 	return &Runner{
 		client: client,
 		tunnel: tunnel,
 		port:   port,
+		host:   host,
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -115,7 +120,7 @@ func (r *Runner) Run() error {
 func (r *Runner) startCloudflared() error {
 	r.cmd = exec.Command("cloudflared", "tunnel", "--no-autoupdate", "run",
 		"--token", r.tunnel.CloudflareTunnelToken,
-		"--url", fmt.Sprintf("http://localhost:%d", r.port))
+		"--url", fmt.Sprintf("http://%s:%d", r.host, r.port))
 
 	r.cmd.Stdout = os.Stdout
 	r.cmd.Stderr = os.Stderr
@@ -198,4 +203,16 @@ func (r *Runner) shutdown() {
 
 	// Report disconnection
 	r.reportDisconnect()
+
+	// Delete tunnel if it's ephemeral (not persistent)
+	// This triggers immediate cleanup of DNS records and SSL certificates
+	if !r.tunnel.Persistent {
+		fmt.Println("Cleaning up tunnel resources...")
+		err := r.client.DeleteTunnel(r.tunnel.ID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to delete tunnel: %v\n", err)
+		} else {
+			fmt.Println("✓ Tunnel resources cleaned up")
+		}
+	}
 }

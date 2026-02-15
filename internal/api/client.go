@@ -6,10 +6,36 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/seth4242/snet/internal/config"
 )
+
+// FlexibleID handles JSON IDs that can be either strings or integers
+type FlexibleID string
+
+func (f *FlexibleID) UnmarshalJSON(data []byte) error {
+	// Try string first
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*f = FlexibleID(s)
+		return nil
+	}
+
+	// Try integer
+	var i int64
+	if err := json.Unmarshal(data, &i); err == nil {
+		*f = FlexibleID(strconv.FormatInt(i, 10))
+		return nil
+	}
+
+	return fmt.Errorf("id must be string or integer")
+}
+
+func (f FlexibleID) String() string {
+	return string(f)
+}
 
 // Client is the API client for seth4242.net
 type Client struct {
@@ -53,26 +79,33 @@ type Tunnel struct {
 	Wildcard              bool      `json:"wildcard"`
 	Persistent            bool      `json:"persistent"`
 	Status                string    `json:"status"`
+	Provider              string    `json:"provider"` // "cloudflare" or "frp"
 	LastHeartbeatAt       *string   `json:"last_heartbeat_at,omitempty"`
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
 	CloudflareTunnelToken string    `json:"cloudflare_tunnel_token,omitempty"`
 	CloudflareTunnelID    string    `json:"cloudflare_tunnel_id,omitempty"`
+	FRPAuthToken          string    `json:"frp_auth_token,omitempty"`
+	FRPProxyName          string    `json:"frp_proxy_name,omitempty"`
 	Account               Account   `json:"account"`
 }
 
 // Account represents an account from the API
 type Account struct {
-	ID   string `json:"id"`
-	Slug string `json:"slug"`
-	Name string `json:"name"`
+	ID       FlexibleID `json:"id"`
+	PrefixID string     `json:"prefix_id"`
+	Slug     string     `json:"slug"`
+	Name     string     `json:"name"`
 }
 
 // CreateTunnelRequest is the request body for creating a tunnel
 type CreateTunnelRequest struct {
 	Name       string `json:"name,omitempty"`
+	Subdomain  string `json:"subdomain,omitempty"`
+	Port       int    `json:"port,omitempty"`
 	Wildcard   bool   `json:"wildcard"`
 	Persistent bool   `json:"persistent"`
+	Provider   string `json:"provider,omitempty"` // "cloudflare" or "frp", defaults to "frp"
 }
 
 // ConnectRequest is the request body for reporting a connection
@@ -98,6 +131,14 @@ type DisconnectRequest struct {
 type HeartbeatResponse struct {
 	Status          string `json:"status"`
 	LastHeartbeatAt string `json:"last_heartbeat_at"`
+}
+
+// SSLStatusResponse is the response from the ssl_status endpoint
+type SSLStatusResponse struct {
+	MainReady     bool                   `json:"main_ready"`
+	WildcardReady bool                   `json:"wildcard_ready"`
+	SSLReady      bool                   `json:"ssl_ready"`
+	Status        map[string]interface{} `json:"status"`
 }
 
 // APIError represents an error from the API
@@ -227,4 +268,11 @@ func (c *Client) Connect(id string, req *ConnectRequest) (*ConnectResponse, erro
 // Disconnect reports a disconnection
 func (c *Client) Disconnect(id string, req *DisconnectRequest) error {
 	return c.do("POST", "/tunnels/"+id+"/disconnect", req, nil)
+}
+
+// SSLStatus checks the SSL certificate validation status
+func (c *Client) SSLStatus(id string) (*SSLStatusResponse, error) {
+	var resp SSLStatusResponse
+	err := c.do("GET", "/tunnels/"+id+"/ssl_status", nil, &resp)
+	return &resp, err
 }

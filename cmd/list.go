@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -10,16 +11,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var listJSON bool
+
 var listCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List all tunnels",
-	Long:    `List all tunnels for the current account.`,
-	RunE:    runList,
+	Long: `List all tunnels for the current account.
+
+Example:
+  snet list                # table format
+  snet list --json         # JSON for scripting
+  snet list --json | jq '.[] | select(.status=="active")'`,
+	RunE: runList,
 }
 
 func init() {
 	rootCmd.AddCommand(listCmd)
+
+	listCmd.Flags().BoolVar(&listJSON, "json", false, "Output as JSON")
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -37,14 +47,24 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to list tunnels: %w", err)
 	}
 
-	if len(tunnels) == 0 {
-		fmt.Println("No tunnels found.")
-		fmt.Println("")
-		fmt.Println("Create one with: snet start --port 3000")
+	// JSON output
+	if listJSON {
+		data, err := json.MarshalIndent(tunnels, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+		fmt.Println(string(data))
 		return nil
 	}
 
-	// Print table
+	// Table output
+	if len(tunnels) == 0 {
+		fmt.Println("No tunnels found.")
+		fmt.Println("")
+		fmt.Println("Create one with: snet start 3000")
+		return nil
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tNAME\tURL\tSTATUS\tTYPE")
 	fmt.Fprintln(w, "--\t----\t---\t------\t----")

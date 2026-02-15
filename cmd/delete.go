@@ -21,6 +21,7 @@ var deleteCmd = &cobra.Command{
 
 Example:
   snet delete tun_abc123
+  snet delete tun_abc123 -y
   snet delete tun_abc123 --force`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDelete,
@@ -30,6 +31,7 @@ func init() {
 	rootCmd.AddCommand(deleteCmd)
 
 	deleteCmd.Flags().BoolVarP(&deleteForce, "force", "f", false, "Skip confirmation")
+	deleteCmd.Flags().BoolVarP(&deleteForce, "yes", "y", false, "Skip confirmation (alias for --force)")
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
