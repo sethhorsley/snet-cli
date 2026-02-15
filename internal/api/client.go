@@ -106,6 +106,7 @@ type CreateTunnelRequest struct {
 	Wildcard   bool   `json:"wildcard"`
 	Persistent bool   `json:"persistent"`
 	Provider   string `json:"provider,omitempty"` // "cloudflare" or "frp", defaults to "frp"
+	Region     string `json:"region,omitempty"`   // Preferred Fly.io region (e.g., "ord", "sjc")
 }
 
 // ConnectRequest is the request body for reporting a connection
@@ -139,6 +140,25 @@ type SSLStatusResponse struct {
 	WildcardReady bool                   `json:"wildcard_ready"`
 	SSLReady      bool                   `json:"ssl_ready"`
 	Status        map[string]interface{} `json:"status"`
+}
+
+// Region represents an available FRP region
+type Region struct {
+	Code      string `json:"code"`
+	Name      string `json:"name"`
+	LatencyMS int    `json:"latency_ms"`
+	Status    string `json:"status"`
+}
+
+// RegionsResponse is the response from the regions endpoint
+type RegionsResponse struct {
+	Regions []Region `json:"regions"`
+}
+
+// RegionRequestRequest is the request to request a new region
+type RegionRequestRequest struct {
+	RegionCode        string `json:"region_code"`
+	DetectedLatencyMS int    `json:"detected_latency_ms"`
 }
 
 // APIError represents an error from the API
@@ -275,4 +295,16 @@ func (c *Client) SSLStatus(id string) (*SSLStatusResponse, error) {
 	var resp SSLStatusResponse
 	err := c.do("GET", "/tunnels/"+id+"/ssl_status", nil, &resp)
 	return &resp, err
+}
+
+// GetRegions fetches available FRP regions
+func (c *Client) GetRegions() (*RegionsResponse, error) {
+	var resp RegionsResponse
+	err := c.do("GET", "/regions", nil, &resp)
+	return &resp, err
+}
+
+// RequestRegion requests a new FRP region to be provisioned
+func (c *Client) RequestRegion(req *RegionRequestRequest) error {
+	return c.do("POST", "/regions/request_region", req, nil)
 }

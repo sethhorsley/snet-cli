@@ -17,34 +17,50 @@ var (
 )
 
 var connectCmd = &cobra.Command{
-	Use:   "connect [port]",
-	Short: "Connect to an existing persistent tunnel",
-	Long: `Connect to an existing persistent tunnel that was created with --persistent.
+	Use:   "connect [name | id] [port]",
+	Short: "Attach to an existing tunnel by name or ID",
+	Long: `Attach to an existing persistent tunnel by name or tunnel ID.
 
-Example:
-  snet connect --tunnel tun_abc123              # connect on port 3000
-  snet connect --tunnel tun_abc123 8080         # connect on port 8080
-  snet connect -t tun_abc123 --host 192.168.1.5 # tunnel to remote host`,
-	Args: cobra.MaximumNArgs(1),
+Tunnels are identified by name (e.g., "api", "acme/api") or by their
+tunnel ID (e.g., "tun_abc123").`,
+	Example: `  # connect by name
+  snet connect api
+  snet connect acme/api
+
+  # connect by tunnel ID
+  snet connect tun_abc123
+
+  # specify port
+  snet connect api 8080`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: runConnect,
 }
 
 func init() {
 	rootCmd.AddCommand(connectCmd)
 
-	connectCmd.Flags().StringVarP(&connectTunnelID, "tunnel", "t", "", "Tunnel ID to connect to (required)")
+	connectCmd.Flags().StringVarP(&connectTunnelID, "tunnel", "t", "", "Tunnel ID to connect to (deprecated: use positional argument)")
 	connectCmd.Flags().IntVarP(&connectPort, "port", "p", 0, "Local port to tunnel to (default 3000)")
 	connectCmd.Flags().StringVar(&connectHost, "host", "localhost", "Host to tunnel to")
-	connectCmd.MarkFlagRequired("tunnel")
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
-	// Determine port: positional arg > --port flag > default (3000)
-	port := 3000
+	// First arg is tunnel name/ID, second arg (optional) is port
+	tunnelIdentifier := connectTunnelID // From --tunnel flag (deprecated)
 	if len(args) > 0 {
-		p, err := strconv.Atoi(args[0])
+		tunnelIdentifier = args[0]
+	}
+
+	if tunnelIdentifier == "" {
+		return fmt.Errorf("tunnel name or ID required")
+	}
+
+	// Determine port: second positional arg > --port flag > default (3000)
+	port := 3000
+	if len(args) > 1 {
+		p, err := strconv.Atoi(args[1])
 		if err != nil {
-			return fmt.Errorf("invalid port: %s", args[0])
+			return fmt.Errorf("invalid port: %s", args[1])
 		}
 		port = p
 	} else if connectPort > 0 {
@@ -57,27 +73,27 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Verify authentication
-	if !Quiet {
-		fmt.Println("Verifying authentication...")
-	}
 	client := api.NewClient(cfg)
-	accounts, err := client.ListAccounts()
-	if err != nil {
-		return fmt.Errorf("authentication failed: %w\n\nPlease run 'snet login' to authenticate", err)
-	}
-	if len(accounts) == 0 {
-		return fmt.Errorf("no accounts found for this token\n\nPlease run 'snet login' to authenticate")
-	}
 
-	// Get tunnel details
-	if !Quiet {
-		fmt.Println("Fetching tunnel details...")
-	}
+	// Try to find tunnel by name or ID
+	var t *api.Tunnel
 
-	t, err := client.GetTunnel(connectTunnelID)
-	if err != nil {
-		return fmt.Errorf("failed to get tunnel: %w", err)
+	// Check if it's a tunnel ID (starts with "tun_")
+	if len(tunnelIdentifier) > 4 && tunnelIdentifier[:4] == "tun_" {
+		// It's a tunnel ID
+		if !Quiet {
+			fmt.Println("Fetching tunnel details...")
+		}
+		t, err = client.GetTunnel(tunnelIdentifier)
+		if err != nil {
+			return fmt.Errorf("failed to get tunnel: %w", err)
+		}
+	} else {
+		// It's a tunnel name - search for it
+		t, _ = findTunnelByName(client, tunnelIdentifier)
+		if t == nil {
+			return fmt.Errorf("tunnel '%s' not found", tunnelIdentifier)
+		}
 	}
 
 	// Determine provider and validate

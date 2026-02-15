@@ -26,6 +26,17 @@ func NewEmbeddedFRPClient(tunnel *api.Tunnel, port int, host string) (*EmbeddedF
 	}
 
 	// Create HTTP proxy configuration
+	// Use customDomains to specify full domain name: {slug}.{account}.seth4242.net
+	// FRP server has no subDomainHost configured, allowing customDomains to work
+	customDomains := []string{
+		fmt.Sprintf("%s.%s.seth4242.net", tunnel.Slug, tunnel.Account.Slug),
+	}
+
+	// Add wildcard domain if enabled
+	if tunnel.Wildcard {
+		customDomains = append(customDomains, fmt.Sprintf("*.%s.%s.seth4242.net", tunnel.Slug, tunnel.Account.Slug))
+	}
+
 	httpProxy := &v1.HTTPProxyConfig{
 		ProxyBaseConfig: v1.ProxyBaseConfig{
 			Name: tunnel.FRPProxyName,
@@ -36,7 +47,7 @@ func NewEmbeddedFRPClient(tunnel *api.Tunnel, port int, host string) (*EmbeddedF
 			},
 		},
 		DomainConfig: v1.DomainConfig{
-			SubDomain: tunnel.Slug,
+			CustomDomains: customDomains,
 		},
 	}
 

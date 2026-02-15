@@ -6,6 +6,7 @@ import (
 
 	"github.com/seth4242/snet/internal/api"
 	"github.com/seth4242/snet/internal/config"
+	"github.com/seth4242/snet/internal/region"
 	"github.com/seth4242/snet/internal/tunnel"
 	"github.com/spf13/cobra"
 )
@@ -116,9 +117,108 @@ func runStart(cmd *cobra.Command, args []string) error {
 		wildcard = false
 	}
 
+	// Detect closest region for FRP tunnels
+	var closestRegion string
+	if provider == "frp" {
+		if !Quiet {
+			fmt.Println("Detecting closest regions...")
+		}
+
+		// Get available regions from API
+		availableResp, err := client.GetRegions()
+		if err != nil {
+			if !Quiet {
+				fmt.Printf("  ⚠ Could not fetch available regions: %v\n", err)
+			}
+		}
+
+		availableRegions := make(map[string]bool)
+		if availableResp != nil {
+			for _, r := range availableResp.Regions {
+				availableRegions[r.Code] = true
+			}
+		}
+
+		// Detect closest region using Fly.io edge
+		closestRegion, err = region.DetectClosestRegion()
+		if err != nil {
+			if !Quiet {
+				fmt.Printf("  ⚠ Could not detect region, using default: %v\n", err)
+			}
+			closestRegion = "ord" // Default to Chicago
+		}
+
+		// Check if closest region is available
+		if availableRegions[closestRegion] {
+			if !Quiet {
+				fmt.Printf("  ✓ Connecting to %s (%s)\n", closestRegion, region.GetRegionName(closestRegion))
+			}
+		} else {
+			// Closest region not available - measure latency to find alternatives
+			if !Quiet {
+				fmt.Printf("  → Closest: %s (%s) - not available yet\n", closestRegion, region.GetRegionName(closestRegion))
+				fmt.Println("  → Measuring latency to find alternatives...")
+			}
+
+			closestRegions, err := region.DetectClosestRegions(5)
+			if err == nil && len(closestRegions) > 0 {
+				// Submit region request for the closest unavailable region
+				if !availableRegions[closestRegions[0].Code] {
+					client.RequestRegion(&api.RegionRequestRequest{
+						RegionCode:        closestRegions[0].Code,
+						DetectedLatencyMS: int(closestRegions[0].LatencyMS),
+					})
+				}
+
+				if !Quiet {
+					fmt.Println("\n  Closest regions by latency:")
+					fmt.Println("  ┌────────┬─────────────────────────────┬───────────┬──────────┐")
+					fmt.Println("  │ Region │ Location                    │ Latency   │ Status   │")
+					fmt.Println("  ├────────┼─────────────────────────────┼───────────┼──────────┤")
+					for i, r := range closestRegions {
+						if i >= 5 {
+							break
+						}
+						status := "Available"
+						if !availableRegions[r.Code] {
+							status = "Requested"
+						}
+						fmt.Printf("  │ %-6s │ %-27s │ %6dms │ %-8s │\n",
+							r.Code, r.Name, r.LatencyMS, status)
+					}
+					fmt.Println("  └────────┴─────────────────────────────┴───────────┴──────────┘")
+					fmt.Println()
+				}
+			}
+
+			// Use first available region or default
+			for code := range availableRegions {
+				closestRegion = code
+				break
+			}
+			if closestRegion == "" {
+				closestRegion = "ord"
+			}
+
+			if !Quiet {
+				fmt.Printf("  → Using %s (%s) via anycast routing\n", closestRegion, region.GetRegionName(closestRegion))
+			}
+		}
+	}
+
 	// Create tunnel
 	if !Quiet {
 		fmt.Printf("Creating %s tunnel...\n", provider)
+		if wildcard {
+			fmt.Println("  → Provisioning wildcard support")
+		}
+		fmt.Println("  → Generating authentication credentials")
+		if provider == "frp" {
+			fmt.Println("  → Using account wildcard SSL certificate")
+			if wildcard {
+				fmt.Println("  → Wildcard SSL certificate will provision in background")
+			}
+		}
 	}
 
 	t, err := client.CreateTunnel(&api.CreateTunnelRequest{
@@ -128,13 +228,14 @@ func runStart(cmd *cobra.Command, args []string) error {
 		Wildcard:   wildcard,
 		Persistent: startPersistent,
 		Provider:   provider,
+		Region:     closestRegion,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create tunnel: %w", err)
 	}
 
 	if !Quiet {
-		fmt.Println("Tunnel created successfully!")
+		fmt.Println("✓ Tunnel created successfully!")
 		fmt.Println("")
 		fmt.Printf("Ready! Proxying %s:%d to:\n", startHost, port)
 		fmt.Printf("  %s\n", t.URL)
