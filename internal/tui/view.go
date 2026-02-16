@@ -4,57 +4,55 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
-// renderMain renders the main TUI view
+// renderMain renders the main TUI view with background
 func renderMain(m Model) string {
-	// Build content sections
-	var content strings.Builder
+	// Get main content
+	content := renderMainContent(m)
 
-	// Header
-	content.WriteString(renderHeader(m))
-	content.WriteString("\n\n")
-
-	// Session info
-	content.WriteString(renderSessionInfo(m))
-	content.WriteString("\n\n")
-
-	// Forwarding URLs
-	content.WriteString(renderForwarding(m))
-	content.WriteString("\n\n")
-
-	// Connection stats
-	content.WriteString(renderStats(m))
-	content.WriteString("\n\n")
-
-	// HTTP request log (fills remaining space)
-	content.WriteString(renderRequestLog(m))
-
-	// Build final output with footer at bottom
-	var output strings.Builder
-
-	// Content
-	contentStr := content.String()
-	output.WriteString(contentStr)
-
-	// Calculate padding to push footer to bottom
-	contentLines := strings.Count(contentStr, "\n")
-	footerLines := 2 // Separator + shortcuts
-	availableHeight := m.Height
-	if availableHeight < 10 {
-		availableHeight = 24 // Default height
+	// Apply background color if not transparent
+	if !UseTransparentBg && ColorBackground != "" {
+		return applyFullBackground(content, m.Width, m.Height, ColorBackground)
 	}
 
-	paddingLines := availableHeight - contentLines - footerLines - 1
-	if paddingLines > 0 {
-		output.WriteString(strings.Repeat("\n", paddingLines))
+	return content
+}
+
+// applyFullBackground applies background color to every character position
+func applyFullBackground(content string, width, height int, bgColor lipgloss.Color) string {
+	lines := strings.Split(content, "\n")
+	result := make([]string, height)
+
+	bgStyle := lipgloss.NewStyle().Background(bgColor)
+
+	for i := 0; i < height; i++ {
+		var line string
+		if i < len(lines) {
+			line = lines[i]
+		} else {
+			line = ""
+		}
+
+		visualWidth := lipgloss.Width(line)
+		padding := width - visualWidth
+
+		var fullLine string
+		if padding > 0 {
+			fullLine = line + strings.Repeat(" ", padding)
+		} else if padding < 0 {
+			fullLine = lipgloss.NewStyle().Width(width).Render(line)
+		} else {
+			fullLine = line
+		}
+
+		// Wrap entire line so text chars get background (not just padding)
+		result[i] = bgStyle.Render(fullLine)
 	}
 
-	// Footer pinned to bottom
-	output.WriteString("\n")
-	output.WriteString(renderFooter(m))
-
-	return output.String()
+	return strings.Join(result, "\n")
 }
 
 // renderHeader renders the header section
@@ -320,6 +318,7 @@ func renderFooter(m Model) string {
 		shortcuts := []string{
 			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[t]"), ShortcutDescStyle.Render("toggle logs")),
 			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[c]"), ShortcutDescStyle.Render("clear")),
+			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[T]"), ShortcutDescStyle.Render("theme")),
 			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[?]"), ShortcutDescStyle.Render("help")),
 			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[Ctrl+C]"), ShortcutDescStyle.Render("quit")),
 		}
@@ -342,6 +341,7 @@ func renderHelp(m Model) string {
 	}{
 		{"t", "Toggle between app logs and all tunnel logs"},
 		{"c", "Clear request history"},
+		{"T", "Change theme (live preview with ↑/↓)"},
 		{"?", "Show/hide this help screen"},
 		{"q, Ctrl+C", "Quit and stop tunnel"},
 	}
@@ -356,6 +356,159 @@ func renderHelp(m Model) string {
 	b.WriteString(FooterStyle.Render("Press any key to return..."))
 
 	return BoxStyle.Render(b.String())
+}
+
+// renderThemeSelector renders the theme selector as an overlay
+func renderThemeSelector(m Model) string {
+	// First render the main view with current background
+	content := renderMainContent(m)
+
+	// Apply background to main view if needed
+	var mainView string
+	if !UseTransparentBg && ColorBackground != "" {
+		mainView = applyFullBackground(content, m.Width, m.Height, ColorBackground)
+	} else {
+		mainView = content
+	}
+
+	// Build the theme selector box content (without border yet)
+	var b strings.Builder
+
+	b.WriteString(ThemeSelectorTitleStyle.Render("Select Theme"))
+	b.WriteString("\n\n")
+
+	themeNames := ThemeNames()
+	for i, themeName := range themeNames {
+		theme := GetTheme(themeName)
+
+		if i == m.ThemeSelectedIndex {
+			// Selected item
+			b.WriteString(ThemeSelectorSelectedStyle.Render("▸ " + theme.Name))
+			if themeName == m.CurrentTheme {
+				b.WriteString(ThemeSelectorSelectedStyle.Render(" ✓"))
+			}
+		} else {
+			// Normal item
+			b.WriteString(ThemeSelectorItemStyle.Render("  " + theme.Name))
+			if themeName == m.CurrentTheme {
+				b.WriteString(ThemeSelectorItemStyle.Render(" ✓"))
+			}
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(FooterStyle.Render("↑/↓ j/k Ctrl+P/N: preview  •  Enter/T: apply  •  Esc: cancel"))
+
+	// Create the selector box with solid background and fixed width
+	selectorStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(ColorBorder).
+		Padding(1, 2).
+		Width(64). // Fixed width
+		Align(lipgloss.Left)
+
+	if ColorBackground != "" {
+		selectorStyle = selectorStyle.Background(ColorBackground)
+	}
+
+	selectorBox := selectorStyle.Render(b.String())
+
+	// Overlay the selector on the main view using lipgloss.Place
+	// First, place the main view as background
+	background := lipgloss.Place(
+		m.Width,
+		m.Height,
+		lipgloss.Left,
+		lipgloss.Top,
+		mainView,
+	)
+
+	// Then place the selector box centered
+	// We need to use a transparent overlay approach
+	// Split main view into lines for manual overlay
+	mainLines := strings.Split(background, "\n")
+
+	// Calculate center position for the selector
+	selectorHeight := strings.Count(selectorBox, "\n") + 1
+	selectorLines := strings.Split(selectorBox, "\n")
+
+	topPadding := (m.Height - selectorHeight) / 2
+	if topPadding < 0 {
+		topPadding = 0
+	}
+
+	// Create result by overlaying selector lines onto main lines
+	resultLines := make([]string, len(mainLines))
+	copy(resultLines, mainLines)
+
+	for i, selectorLine := range selectorLines {
+		lineIdx := topPadding + i
+		if lineIdx >= 0 && lineIdx < len(resultLines) {
+			// Center the selector line
+			selectorWidth := lipgloss.Width(selectorLine)
+			leftPad := (m.Width - selectorWidth) / 2
+			if leftPad < 0 {
+				leftPad = 0
+			}
+
+			// Place the selector line centered
+			resultLines[lineIdx] = strings.Repeat(" ", leftPad) + selectorLine
+		}
+	}
+
+	return strings.Join(resultLines, "\n")
+}
+
+// renderMainContent renders just the content without background wrapper
+func renderMainContent(m Model) string {
+	// Build content sections
+	var content strings.Builder
+
+	// Header
+	content.WriteString(renderHeader(m))
+	content.WriteString("\n\n")
+
+	// Session info
+	content.WriteString(renderSessionInfo(m))
+	content.WriteString("\n\n")
+
+	// Forwarding URLs
+	content.WriteString(renderForwarding(m))
+	content.WriteString("\n\n")
+
+	// Connection stats
+	content.WriteString(renderStats(m))
+	content.WriteString("\n\n")
+
+	// HTTP request log (fills remaining space)
+	content.WriteString(renderRequestLog(m))
+
+	// Build final output with footer at bottom
+	var output strings.Builder
+
+	// Content
+	contentStr := content.String()
+	output.WriteString(contentStr)
+
+	// Calculate padding to push footer to bottom
+	contentLines := strings.Count(contentStr, "\n")
+	footerLines := 2 // Separator + shortcuts
+	availableHeight := m.Height
+	if availableHeight < 10 {
+		availableHeight = 24 // Default height
+	}
+
+	paddingLines := availableHeight - contentLines - footerLines - 1
+	if paddingLines > 0 {
+		output.WriteString(strings.Repeat("\n", paddingLines))
+	}
+
+	// Footer pinned to bottom
+	output.WriteString("\n")
+	output.WriteString(renderFooter(m))
+
+	return output.String()
 }
 
 // renderShutdown renders the shutdown message

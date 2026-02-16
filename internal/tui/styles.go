@@ -6,14 +6,16 @@ import (
 
 // Colors - ngrok-inspired purple/blue theme
 var (
-	ColorPrimary   = lipgloss.Color("#7B61FF") // Purple
-	ColorSecondary = lipgloss.Color("#00D9FF") // Cyan
-	ColorSuccess   = lipgloss.Color("#00FF87") // Green
-	ColorWarning   = lipgloss.Color("#FFD700") // Yellow
-	ColorError     = lipgloss.Color("#FF6B6B") // Red
-	ColorMuted     = lipgloss.Color("#6C7A89") // Gray
-	ColorBorder    = lipgloss.Color("#3E4C59") // Dark gray
-	ColorWhite     = lipgloss.Color("#FFFFFF")
+	ColorPrimary     = lipgloss.Color("#7B61FF") // Purple
+	ColorSecondary   = lipgloss.Color("#00D9FF") // Cyan
+	ColorSuccess     = lipgloss.Color("#00FF87") // Green
+	ColorWarning     = lipgloss.Color("#FFD700") // Yellow
+	ColorError       = lipgloss.Color("#FF6B6B") // Red
+	ColorMuted       = lipgloss.Color("#6C7A89") // Gray
+	ColorBorder      = lipgloss.Color("#3E4C59") // Dark gray
+	ColorWhite       = lipgloss.Color("#FFFFFF")
+	ColorBackground  = lipgloss.Color("") // Transparent by default
+	UseTransparentBg = true
 )
 
 // Styles
@@ -132,6 +134,26 @@ var (
 	// Divider
 	DividerStyle = lipgloss.NewStyle().
 			Foreground(ColorBorder)
+
+	// Theme selector styles
+	ThemeSelectorTitleStyle = lipgloss.NewStyle().
+				Foreground(ColorPrimary).
+				Bold(true).
+				MarginBottom(1)
+
+	ThemeSelectorItemStyle = lipgloss.NewStyle().
+				Foreground(ColorWhite).
+				PaddingLeft(2)
+
+	ThemeSelectorSelectedStyle = lipgloss.NewStyle().
+					Foreground(ColorPrimary).
+					Bold(true).
+					PaddingLeft(0)
+
+	ThemeSelectorBoxStyle = lipgloss.NewStyle().
+				BorderStyle(lipgloss.RoundedBorder()).
+				BorderForeground(ColorBorder).
+				Padding(1, 2)
 )
 
 // GetMethodStyle returns the style for an HTTP method

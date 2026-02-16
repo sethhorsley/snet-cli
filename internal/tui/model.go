@@ -44,6 +44,9 @@ type Model struct {
 	Width              int
 	Height             int
 	ShowHelp           bool
+	ShowThemeSelector  bool   // Show theme selector
+	ThemeSelectedIndex int    // Currently selected theme in selector
+	CurrentTheme       string // Current active theme name
 	Quitting           bool
 	ConfirmQuit        bool      // Waiting for second quit confirmation
 	QuitConfirmExpires time.Time // When quit confirmation expires
@@ -92,27 +95,33 @@ type TunnelLoadedMsg struct {
 
 // New creates a new TUI model
 func New(tunnelName, mainURL, wildcardURL, accountName, region, version string, isWildcard, isReconnected bool, latency time.Duration, headerSummary string, hostHeaderRewrite string, requestHeaders, responseHeaders map[string]string) Model {
+	// Apply default theme
+	ApplyTheme("default")
+
 	return Model{
-		Status:            "connecting",
-		AccountName:       accountName,
-		AccountPlan:       "Free", // TODO: Get from API
-		Version:           version,
-		Region:            region,
-		Latency:           latency,
-		TunnelName:        tunnelName,
-		MainURL:           mainURL,
-		WildcardURL:       wildcardURL,
-		IsWildcard:        isWildcard,
-		IsReconnected:     isReconnected,
-		HeaderSummary:     headerSummary,
-		HostHeaderRewrite: hostHeaderRewrite,
-		RequestHeaders:    requestHeaders,
-		ResponseHeaders:   responseHeaders,
-		Requests:          make([]HTTPRequest, 0),
-		MaxRequests:       50, // Keep last 50 requests
-		ShowAllLogs:       false,
-		Width:             80,
-		Height:            24,
+		Status:             "connecting",
+		AccountName:        accountName,
+		AccountPlan:        "Free", // TODO: Get from API
+		Version:            version,
+		Region:             region,
+		Latency:            latency,
+		TunnelName:         tunnelName,
+		MainURL:            mainURL,
+		WildcardURL:        wildcardURL,
+		IsWildcard:         isWildcard,
+		IsReconnected:      isReconnected,
+		HeaderSummary:      headerSummary,
+		HostHeaderRewrite:  hostHeaderRewrite,
+		RequestHeaders:     requestHeaders,
+		ResponseHeaders:    responseHeaders,
+		Requests:           make([]HTTPRequest, 0),
+		MaxRequests:        50, // Keep last 50 requests
+		ShowAllLogs:        false,
+		ShowThemeSelector:  false,
+		ThemeSelectedIndex: 0,
+		CurrentTheme:       "default",
+		Width:              80,
+		Height:             24,
 	}
 }
 
@@ -176,6 +185,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKeyPress processes keyboard input
 func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle theme selector
+	if m.ShowThemeSelector {
+		switch msg.String() {
+		case "esc":
+			// Close theme selector and revert to current theme
+			ApplyTheme(m.CurrentTheme)
+			m.ShowThemeSelector = false
+			return m, nil
+		case "T":
+			// Close theme selector and keep the previewed theme
+			themeNames := ThemeNames()
+			m.CurrentTheme = themeNames[m.ThemeSelectedIndex]
+			m.ShowThemeSelector = false
+			return m, nil
+		case "up", "k", "ctrl+p":
+			if m.ThemeSelectedIndex > 0 {
+				m.ThemeSelectedIndex--
+				// Apply theme live for preview
+				themeNames := ThemeNames()
+				ApplyTheme(themeNames[m.ThemeSelectedIndex])
+			}
+			return m, nil
+		case "down", "j", "ctrl+n":
+			themeNames := ThemeNames()
+			if m.ThemeSelectedIndex < len(themeNames)-1 {
+				m.ThemeSelectedIndex++
+				// Apply theme live for preview
+				ApplyTheme(themeNames[m.ThemeSelectedIndex])
+			}
+			return m, nil
+		case "enter":
+			// Confirm selected theme
+			themeNames := ThemeNames()
+			m.CurrentTheme = themeNames[m.ThemeSelectedIndex]
+			m.ShowThemeSelector = false
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Check if we're in quit confirmation mode
 	if m.ConfirmQuit {
 		switch msg.String() {
@@ -208,6 +257,21 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "c":
 		m.Requests = make([]HTTPRequest, 0)
+		return m, nil
+
+	case "T":
+		// Toggle theme selector (capital T)
+		if !m.ShowThemeSelector {
+			// Opening selector - set selected index to current theme
+			themeNames := ThemeNames()
+			for i, name := range themeNames {
+				if name == m.CurrentTheme {
+					m.ThemeSelectedIndex = i
+					break
+				}
+			}
+		}
+		m.ShowThemeSelector = !m.ShowThemeSelector
 		return m, nil
 
 	case "?":
@@ -244,6 +308,10 @@ func clearQuitConfirmAfter(d time.Duration) tea.Cmd {
 func (m Model) View() string {
 	if m.Quitting {
 		return renderShutdown(m)
+	}
+
+	if m.ShowThemeSelector {
+		return renderThemeSelector(m)
 	}
 
 	if m.ShowHelp {
