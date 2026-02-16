@@ -103,6 +103,43 @@ func renderSessionInfo(m Model) string {
 	b.WriteString(LabelStyle.Render("Tunnel:"))
 	b.WriteString(ValueStyle.Render(tunnelName))
 
+	// Header configuration (if any)
+	hasHeaders := m.HostHeaderRewrite != "" || len(m.RequestHeaders) > 0 || len(m.ResponseHeaders) > 0
+	if hasHeaders {
+		b.WriteString("\n")
+		b.WriteString(LabelStyle.Render("Headers:"))
+		b.WriteString("\n")
+
+		// Host header rewrite
+		if m.HostHeaderRewrite != "" {
+			b.WriteString(LabelStyle.Render("  Host →"))
+			b.WriteString(ValueStyle.Render(m.HostHeaderRewrite))
+			b.WriteString("\n")
+		}
+
+		// Request headers
+		if len(m.RequestHeaders) > 0 {
+			b.WriteString(LabelStyle.Render("  Request:"))
+			b.WriteString("\n")
+			for name, value := range m.RequestHeaders {
+				b.WriteString(LabelStyle.Render(fmt.Sprintf("    %s:", name)))
+				b.WriteString(ValueStyle.Render(value))
+				b.WriteString("\n")
+			}
+		}
+
+		// Response headers
+		if len(m.ResponseHeaders) > 0 {
+			b.WriteString(LabelStyle.Render("  Response:"))
+			b.WriteString("\n")
+			for name, value := range m.ResponseHeaders {
+				b.WriteString(LabelStyle.Render(fmt.Sprintf("    %s:", name)))
+				b.WriteString(ValueStyle.Render(value))
+				b.WriteString("\n")
+			}
+		}
+	}
+
 	return b.String()
 }
 

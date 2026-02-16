@@ -32,7 +32,7 @@ type EmbeddedFRPClient struct {
 }
 
 // NewEmbeddedFRPClient creates a new embedded FRP client
-func NewEmbeddedFRPClient(tunnel *api.Tunnel, port int, host string, suppressLog bool, tuiLogger TUILogger) (*EmbeddedFRPClient, error) {
+func NewEmbeddedFRPClient(tunnel *api.Tunnel, port int, host string, suppressLog bool, tuiLogger TUILogger, headerConfig *HeaderConfig) (*EmbeddedFRPClient, error) {
 	if host == "" {
 		host = "127.0.0.1"
 	}
@@ -61,7 +61,11 @@ func NewEmbeddedFRPClient(tunnel *api.Tunnel, port int, host string, suppressLog
 		DomainConfig: v1.DomainConfig{
 			CustomDomains: customDomains,
 		},
+		// Transparent mode by default - no header manipulation
 	}
+
+	// Apply custom header configuration if provided
+	headerConfig.ApplyToProxyConfig(httpProxy)
 
 	// Determine log configuration
 	// In TUI mode: write logs to a temp file so we can tail and display them when 't' is toggled

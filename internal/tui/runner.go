@@ -24,6 +24,10 @@ func NewTUIWrapper(
 	isWildcard bool,
 	isReconnected bool,
 	latency time.Duration,
+	headerSummary string,
+	hostHeaderRewrite string,
+	requestHeaders map[string]string,
+	responseHeaders map[string]string,
 ) *TUIWrapper {
 	model := New(
 		tunnelName,
@@ -35,6 +39,10 @@ func NewTUIWrapper(
 		isWildcard,
 		isReconnected,
 		latency,
+		headerSummary,
+		hostHeaderRewrite,
+		requestHeaders,
+		responseHeaders,
 	)
 
 	return &TUIWrapper{

@@ -17,11 +17,15 @@ type Model struct {
 	Latency     time.Duration
 
 	// Tunnel info
-	TunnelName    string
-	MainURL       string
-	WildcardURL   string
-	IsWildcard    bool
-	IsReconnected bool
+	TunnelName        string
+	MainURL           string
+	WildcardURL       string
+	IsWildcard        bool
+	IsReconnected     bool
+	HeaderSummary     string            // Summary of header configuration
+	HostHeaderRewrite string            // Host header rewrite value
+	RequestHeaders    map[string]string // Custom request headers
+	ResponseHeaders   map[string]string // Custom response headers
 
 	// Connection stats
 	TotalConnections int
@@ -87,24 +91,28 @@ type TunnelLoadedMsg struct {
 }
 
 // New creates a new TUI model
-func New(tunnelName, mainURL, wildcardURL, accountName, region, version string, isWildcard, isReconnected bool, latency time.Duration) Model {
+func New(tunnelName, mainURL, wildcardURL, accountName, region, version string, isWildcard, isReconnected bool, latency time.Duration, headerSummary string, hostHeaderRewrite string, requestHeaders, responseHeaders map[string]string) Model {
 	return Model{
-		Status:        "connecting",
-		AccountName:   accountName,
-		AccountPlan:   "Free", // TODO: Get from API
-		Version:       version,
-		Region:        region,
-		Latency:       latency,
-		TunnelName:    tunnelName,
-		MainURL:       mainURL,
-		WildcardURL:   wildcardURL,
-		IsWildcard:    isWildcard,
-		IsReconnected: isReconnected,
-		Requests:      make([]HTTPRequest, 0),
-		MaxRequests:   50, // Keep last 50 requests
-		ShowAllLogs:   false,
-		Width:         80,
-		Height:        24,
+		Status:            "connecting",
+		AccountName:       accountName,
+		AccountPlan:       "Free", // TODO: Get from API
+		Version:           version,
+		Region:            region,
+		Latency:           latency,
+		TunnelName:        tunnelName,
+		MainURL:           mainURL,
+		WildcardURL:       wildcardURL,
+		IsWildcard:        isWildcard,
+		IsReconnected:     isReconnected,
+		HeaderSummary:     headerSummary,
+		HostHeaderRewrite: hostHeaderRewrite,
+		RequestHeaders:    requestHeaders,
+		ResponseHeaders:   responseHeaders,
+		Requests:          make([]HTTPRequest, 0),
+		MaxRequests:       50, // Keep last 50 requests
+		ShowAllLogs:       false,
+		Width:             80,
+		Height:            24,
 	}
 }
 

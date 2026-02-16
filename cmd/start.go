@@ -20,6 +20,10 @@ var (
 	startPersistent bool
 	startName       string
 	startProvider   string
+	// Header configuration flags
+	startRequestHeaders  []string
+	startResponseHeaders []string
+	startHostHeader      string
 )
 
 var startCmd = &cobra.Command{
@@ -51,6 +55,11 @@ func init() {
 	startCmd.Flags().BoolVar(&startPersistent, "persistent", false, "Keep tunnel after disconnect")
 	startCmd.Flags().StringVarP(&startName, "name", "n", "", "Friendly name for the tunnel")
 	startCmd.Flags().StringVar(&startProvider, "provider", "", "Tunnel provider: frp or cloudflare (uses config default if not specified)")
+
+	// Header configuration flags
+	startCmd.Flags().StringArrayVarP(&startRequestHeaders, "header", "H", []string{}, "Add request header (format: name:value, can be repeated)")
+	startCmd.Flags().StringArrayVar(&startResponseHeaders, "response-header", []string{}, "Add response header (format: name:value, can be repeated)")
+	startCmd.Flags().StringVar(&startHostHeader, "host-header", "", "Rewrite Host header to specific value")
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
@@ -250,9 +259,19 @@ func runStart(cmd *cobra.Command, args []string) error {
 		fmt.Println(t.URL)
 	}
 
+	// Parse header configuration
+	headerConfig, err := tunnel.ParseHeaderFlags(
+		startRequestHeaders,
+		startResponseHeaders,
+		startHostHeader,
+	)
+	if err != nil {
+		return fmt.Errorf("invalid header configuration: %w", err)
+	}
+
 	// Run the appropriate tunnel runner based on provider
 	if t.Provider == "frp" || t.FRPAuthToken != "" {
-		runner := tunnel.NewFRPRunner(client, t, port, startHost)
+		runner := tunnel.NewFRPRunner(client, t, port, startHost, headerConfig)
 		return runner.Run()
 	} else {
 		runner := tunnel.NewRunner(client, t, port, startHost)

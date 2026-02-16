@@ -14,6 +14,10 @@ var (
 	connectTunnelID string
 	connectPort     int
 	connectHost     string
+	// Header configuration flags
+	connectRequestHeaders  []string
+	connectResponseHeaders []string
+	connectHostHeader      string
 )
 
 var connectCmd = &cobra.Command{
@@ -42,6 +46,11 @@ func init() {
 	connectCmd.Flags().StringVarP(&connectTunnelID, "tunnel", "t", "", "Tunnel ID to connect to (deprecated: use positional argument)")
 	connectCmd.Flags().IntVarP(&connectPort, "port", "p", 0, "Local port to tunnel to (default 3000)")
 	connectCmd.Flags().StringVar(&connectHost, "host", "localhost", "Host to tunnel to")
+
+	// Header configuration flags
+	connectCmd.Flags().StringArrayVarP(&connectRequestHeaders, "header", "H", []string{}, "Add request header (format: name:value, can be repeated)")
+	connectCmd.Flags().StringArrayVar(&connectResponseHeaders, "response-header", []string{}, "Add response header (format: name:value, can be repeated)")
+	connectCmd.Flags().StringVar(&connectHostHeader, "host-header", "", "Rewrite Host header to specific value")
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
@@ -126,9 +135,19 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		fmt.Println(t.URL)
 	}
 
+	// Parse header configuration
+	headerConfig, err := tunnel.ParseHeaderFlags(
+		connectRequestHeaders,
+		connectResponseHeaders,
+		connectHostHeader,
+	)
+	if err != nil {
+		return fmt.Errorf("invalid header configuration: %w", err)
+	}
+
 	// Run the appropriate tunnel runner
 	if isFRP {
-		runner := tunnel.NewFRPRunner(client, t, port, connectHost)
+		runner := tunnel.NewFRPRunner(client, t, port, connectHost, headerConfig)
 		return runner.Run()
 	} else {
 		runner := tunnel.NewRunner(client, t, port, connectHost)

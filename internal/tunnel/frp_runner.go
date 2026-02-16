@@ -33,21 +33,23 @@ type FRPRunner struct {
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	tuiCallbacks TUICallbacks
+	headerConfig *HeaderConfig
 }
 
 // NewFRPRunner creates a new FRP tunnel runner
-func NewFRPRunner(client *api.Client, tunnel *api.Tunnel, port int, host string) *FRPRunner {
+func NewFRPRunner(client *api.Client, tunnel *api.Tunnel, port int, host string, headerConfig *HeaderConfig) *FRPRunner {
 	ctx, cancel := context.WithCancel(context.Background())
 	if host == "" {
 		host = "127.0.0.1"
 	}
 	return &FRPRunner{
-		client: client,
-		tunnel: tunnel,
-		port:   port,
-		host:   host,
-		ctx:    ctx,
-		cancel: cancel,
+		client:       client,
+		tunnel:       tunnel,
+		port:         port,
+		host:         host,
+		ctx:          ctx,
+		cancel:       cancel,
+		headerConfig: headerConfig,
 	}
 }
 
@@ -60,7 +62,7 @@ func (r *FRPRunner) SetTUICallbacks(callbacks TUICallbacks) {
 func (r *FRPRunner) Run() error {
 	// Create embedded FRP client (suppress logs if TUI mode is enabled)
 	suppressLog := r.tuiCallbacks != nil
-	frpClient, err := NewEmbeddedFRPClient(r.tunnel, r.port, r.host, suppressLog, r.tuiCallbacks)
+	frpClient, err := NewEmbeddedFRPClient(r.tunnel, r.port, r.host, suppressLog, r.tuiCallbacks, r.headerConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create FRP client: %w", err)
 	}

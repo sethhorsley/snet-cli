@@ -21,6 +21,10 @@ var (
 	httpURL       string
 	httpInspect   bool
 	httpEphemeral bool
+	// Header configuration flags
+	httpRequestHeaders  []string
+	httpResponseHeaders []string
+	httpHostHeader      string
 )
 
 var httpCmd = &cobra.Command{
@@ -50,7 +54,10 @@ Use --ephemeral for temporary tunnels that are deleted on disconnect.`,
   snet http 3000 --tmp          # same as --ephemeral
 
   # choose endpoint URL
-  snet http 3000 --url https://api.example.com`,
+  snet http 3000 --url https://api.example.com
+
+  # custom headers for multi-tenant apps
+  snet http 3000 --host-header tenant1.example.com -H "X-Forwarded-Host:tenant1.example.com"`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runHTTP,
 }
@@ -64,6 +71,11 @@ func init() {
 	httpCmd.Flags().BoolVar(&httpEphemeral, "ephemeral", false, "temporary tunnel (auto-cleanup on disconnect)")
 	httpCmd.Flags().BoolVar(&httpEphemeral, "temp", false, "temporary tunnel (alias for --ephemeral)")
 	httpCmd.Flags().BoolVar(&httpEphemeral, "tmp", false, "temporary tunnel (alias for --ephemeral)")
+
+	// Header configuration flags
+	httpCmd.Flags().StringArrayVarP(&httpRequestHeaders, "header", "H", []string{}, "Add request header (format: name:value, can be repeated)")
+	httpCmd.Flags().StringArrayVar(&httpResponseHeaders, "response-header", []string{}, "Add response header (format: name:value, can be repeated)")
+	httpCmd.Flags().StringVar(&httpHostHeader, "host-header", "", "Rewrite Host header to specific value")
 }
 
 func runHTTP(cmd *cobra.Command, args []string) error {
@@ -202,9 +214,19 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Parse header configuration
+	headerConfig, err := tunnel.ParseHeaderFlags(
+		httpRequestHeaders,
+		httpResponseHeaders,
+		httpHostHeader,
+	)
+	if err != nil {
+		return fmt.Errorf("invalid header configuration: %w", err)
+	}
+
 	// Start the tunnel runner
 	if t.Provider == "frp" || t.FRPAuthToken != "" {
-		runner := tunnel.NewFRPRunner(client, t, port, host)
+		runner := tunnel.NewFRPRunner(client, t, port, host, headerConfig)
 
 		// Enable TUI if requested
 		if UseTUI && !Quiet {
@@ -223,6 +245,19 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 				accountName = "default"
 			}
 
+			// Get header configuration details
+			headerSummary := ""
+			hostHeaderRewrite := ""
+			var requestHeaders map[string]string
+			var responseHeaders map[string]string
+
+			if headerConfig != nil {
+				headerSummary = headerConfig.String()
+				hostHeaderRewrite = headerConfig.HostHeaderRewrite
+				requestHeaders = headerConfig.RequestHeaders
+				responseHeaders = headerConfig.ResponseHeaders
+			}
+
 			// Create TUI wrapper with real data
 			tuiWrapper := tui.NewTUIWrapper(
 				tunnelName,
@@ -234,6 +269,10 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 				t.Wildcard,
 				reconnecting,
 				latency,
+				headerSummary,
+				hostHeaderRewrite,
+				requestHeaders,
+				responseHeaders,
 			)
 
 			// Set TUI callbacks on runner
