@@ -70,24 +70,26 @@ func NewClientWithToken(baseURL, token string) *Client {
 
 // Tunnel represents a tunnel from the API
 type Tunnel struct {
-	ID                    string    `json:"id"`
-	Slug                  string    `json:"slug"`
-	Name                  string    `json:"name"`
-	URL                   string    `json:"url"`
-	WildcardURL           string    `json:"wildcard_url,omitempty"`
-	Port                  int       `json:"port,omitempty"`
-	Wildcard              bool      `json:"wildcard"`
-	Persistent            bool      `json:"persistent"`
-	Status                string    `json:"status"`
-	Provider              string    `json:"provider"` // "cloudflare" or "frp"
-	LastHeartbeatAt       *string   `json:"last_heartbeat_at,omitempty"`
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
-	CloudflareTunnelToken string    `json:"cloudflare_tunnel_token,omitempty"`
-	CloudflareTunnelID    string    `json:"cloudflare_tunnel_id,omitempty"`
-	FRPAuthToken          string    `json:"frp_auth_token,omitempty"`
-	FRPProxyName          string    `json:"frp_proxy_name,omitempty"`
-	Account               Account   `json:"account"`
+	ID                    string     `json:"id"`
+	Slug                  string     `json:"slug"`
+	Name                  string     `json:"name"`
+	URL                   string     `json:"url"`
+	WildcardURL           string     `json:"wildcard_url,omitempty"`
+	Port                  int        `json:"port,omitempty"`
+	Wildcard              bool       `json:"wildcard"`
+	Persistent            bool       `json:"persistent"`
+	Status                string     `json:"status"`
+	Provider              string     `json:"provider"` // "cloudflare" or "frp"
+	LastHeartbeatAt       *string    `json:"last_heartbeat_at,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	SSLValidatedAt        *time.Time `json:"ssl_validated_at,omitempty"`
+	SSLReady              bool       `json:"ssl_ready"`
+	CloudflareTunnelToken string     `json:"cloudflare_tunnel_token,omitempty"`
+	CloudflareTunnelID    string     `json:"cloudflare_tunnel_id,omitempty"`
+	FRPAuthToken          string     `json:"frp_auth_token,omitempty"`
+	FRPProxyName          string     `json:"frp_proxy_name,omitempty"`
+	Account               Account    `json:"account"`
 }
 
 // Account represents an account from the API

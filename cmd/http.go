@@ -6,9 +6,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/seth4242/snet/internal/api"
+	"github.com/seth4242/snet/internal/buildinfo"
 	"github.com/seth4242/snet/internal/config"
+	"github.com/seth4242/snet/internal/tui"
 	"github.com/seth4242/snet/internal/tunnel"
 	"github.com/spf13/cobra"
 )
@@ -64,6 +67,8 @@ func init() {
 }
 
 func runHTTP(cmd *cobra.Command, args []string) error {
+	startTime := time.Now()
+
 	// Parse address:port or just port
 	port := 3000
 	host := "localhost"
@@ -107,23 +112,44 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 	// Sanitize tunnel name (lowercase, alphanumeric, hyphens only)
 	tunnelName = sanitizeTunnelName(tunnelName)
 
+	if buildinfo.IsDevelopment() {
+		fmt.Fprintf(os.Stderr, "⏱️  CLI startup time: %v\n", time.Since(startTime))
+	}
+
 	// Load config
+	configStart := time.Now()
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
+	if buildinfo.IsDevelopment() {
+		fmt.Fprintf(os.Stderr, "⏱️  Config load time: %v\n", time.Since(configStart))
+	}
 
 	client := api.NewClient(cfg)
 
-	// Check if tunnel with this name already exists (skip for ephemeral tunnels)
-	var existingTunnel *api.Tunnel
+	// For TUI mode, we'll start immediately and fetch tunnel data asynchronously
+	// For non-TUI mode, we block and wait
+	var t *api.Tunnel
 	var reconnecting bool
 
+	// Fetch tunnel data
+	// For TUI mode, we could show a loading spinner here
+	// For now, both modes block on this call
+	var existingTunnel *api.Tunnel
+
+	if UseTUI && !Quiet {
+		fmt.Fprintf(os.Stderr, "⏳ Loading tunnel data...\n")
+	}
+
+	apiStart := time.Now()
 	if !httpEphemeral {
 		existingTunnel, reconnecting = findTunnelByName(client, tunnelName)
 	}
+	if buildinfo.IsDevelopment() && existingTunnel != nil {
+		fmt.Fprintf(os.Stderr, "⏱️  API call (list tunnels): %v\n", time.Since(apiStart))
+	}
 
-	var t *api.Tunnel
 	if existingTunnel != nil {
 		// Reconnect to existing tunnel
 		t = existingTunnel
@@ -151,15 +177,19 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			fmt.Println("  → Generating authentication credentials")
 		}
 
+		createStart := time.Now()
 		t, err = client.CreateTunnel(&api.CreateTunnelRequest{
 			Name:       tunnelName,
 			Port:       port,
 			Wildcard:   wildcard,
-			Persistent: !httpEphemeral, // Persistent by default, unless --ephemeral
+			Persistent: !httpEphemeral,
 			Provider:   provider,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create tunnel: %w", err)
+		}
+		if buildinfo.IsDevelopment() {
+			fmt.Fprintf(os.Stderr, "⏱️  API call (create tunnel): %v\n", time.Since(createStart))
 		}
 
 		if !Quiet {
@@ -173,17 +203,73 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start the tunnel runner
-	if !Quiet && !reconnecting {
-		fmt.Println("Press Ctrl+C to stop the tunnel.\n")
-	} else if !Quiet {
-		fmt.Println("Press Ctrl+C to disconnect.\n")
-	}
-
 	if t.Provider == "frp" || t.FRPAuthToken != "" {
 		runner := tunnel.NewFRPRunner(client, t, port, host)
+
+		// Enable TUI if requested
+		if UseTUI && !Quiet {
+			if buildinfo.IsDevelopment() {
+				totalTime := time.Since(startTime)
+				fmt.Fprintf(os.Stderr, "⏱️  Total time to tunnel ready: %v\n", totalTime)
+				fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+			}
+
+			regionName := "iad"              // Default/only region for now
+			latency := 50 * time.Millisecond // Placeholder
+
+			// Get account name from tunnel
+			accountName := t.Account.Name
+			if accountName == "" {
+				accountName = "default"
+			}
+
+			// Create TUI wrapper with real data
+			tuiWrapper := tui.NewTUIWrapper(
+				tunnelName,
+				t.URL,
+				t.WildcardURL,
+				accountName,
+				regionName,
+				buildinfo.Version,
+				t.Wildcard,
+				reconnecting,
+				latency,
+			)
+
+			// Set TUI callbacks on runner
+			runner.SetTUICallbacks(tuiWrapper)
+
+			// Start TUI
+			if err := tuiWrapper.Start(); err != nil {
+				// Fall back to plain mode
+				fmt.Fprintf(os.Stderr, "Warning: TUI failed to start: %v\n", err)
+				fmt.Println("\nPress Ctrl+C to stop the tunnel.\n")
+				return runner.Run()
+			}
+
+			// Run tunnel (blocks until quit)
+			err := runner.Run()
+			tuiWrapper.Stop()
+			return err
+		}
+
+		// Plain text mode
+		if !Quiet && !reconnecting {
+			fmt.Println("Press Ctrl+C to stop the tunnel.\n")
+		} else if !Quiet {
+			fmt.Println("Press Ctrl+C to disconnect.\n")
+		}
+
 		return runner.Run()
 	} else {
 		runner := tunnel.NewRunner(client, t, port, host)
+
+		if !Quiet && !reconnecting {
+			fmt.Println("Press Ctrl+C to stop the tunnel.\n")
+		} else if !Quiet {
+			fmt.Println("Press Ctrl+C to disconnect.\n")
+		}
+
 		return runner.Run()
 	}
 }

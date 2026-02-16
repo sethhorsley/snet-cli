@@ -18,6 +18,9 @@ var (
 
 	// Verbose enables detailed output
 	Verbose bool
+
+	// UseTUI enables the beautiful terminal UI (enabled by default)
+	UseTUI bool
 )
 
 var rootCmd = &cobra.Command{
@@ -64,6 +67,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&apiPort, "api-port", 0, "Override API port (development mode only)")
 	rootCmd.PersistentFlags().BoolVarP(&Quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
+	rootCmd.PersistentFlags().BoolVar(&UseTUI, "tui", true, "Use beautiful terminal UI (disable with --tui=false)")
 }
 
 // GetAPIBase returns the API base URL, respecting the --api-port flag

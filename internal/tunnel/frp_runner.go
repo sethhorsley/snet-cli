@@ -13,6 +13,14 @@ import (
 	"github.com/seth4242/snet/internal/api"
 )
 
+// TUICallbacks provides callbacks for TUI integration
+type TUICallbacks interface {
+	UpdateStatus(status string)
+	UpdateConnectionStats(total, open int, rt1, rt5, p50, p90 time.Duration)
+	LogHTTPRequest(method, path string, statusCode int, duration time.Duration, isAppLog bool)
+	QuitChan() <-chan struct{}
+}
+
 // FRPRunner manages the embedded FRP client and heartbeats
 type FRPRunner struct {
 	client       *api.Client
@@ -24,6 +32,7 @@ type FRPRunner struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
+	tuiCallbacks TUICallbacks
 }
 
 // NewFRPRunner creates a new FRP tunnel runner
@@ -42,20 +51,35 @@ func NewFRPRunner(client *api.Client, tunnel *api.Tunnel, port int, host string)
 	}
 }
 
+// SetTUICallbacks sets the TUI callbacks for this runner
+func (r *FRPRunner) SetTUICallbacks(callbacks TUICallbacks) {
+	r.tuiCallbacks = callbacks
+}
+
 // Run starts the FRP tunnel and blocks until it exits
 func (r *FRPRunner) Run() error {
-	// Create embedded FRP client
-	frpClient, err := NewEmbeddedFRPClient(r.tunnel, r.port, r.host)
+	// Create embedded FRP client (suppress logs if TUI mode is enabled)
+	suppressLog := r.tuiCallbacks != nil
+	frpClient, err := NewEmbeddedFRPClient(r.tunnel, r.port, r.host, suppressLog, r.tuiCallbacks)
 	if err != nil {
 		return fmt.Errorf("failed to create FRP client: %w", err)
 	}
 	r.frpClient = frpClient
 
-	fmt.Println("\nStarting embedded FRP client...")
+	// Only print if no TUI
+	if r.tuiCallbacks == nil {
+		fmt.Println("\nStarting embedded FRP client...")
+	}
 
 	// Report connection to API
 	if err := r.reportConnect(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to report connection: %v\n", err)
+		if r.tuiCallbacks != nil {
+			r.tuiCallbacks.UpdateStatus("offline")
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: failed to report connection: %v\n", err)
+		}
+	} else if r.tuiCallbacks != nil {
+		r.tuiCallbacks.UpdateStatus("connecting")
 	}
 
 	// Start heartbeat goroutine
@@ -75,31 +99,54 @@ func (r *FRPRunner) Run() error {
 	// Wait for FRP client to be ready
 	time.Sleep(1 * time.Second)
 
-	if r.frpClient.IsConnected() {
-		fmt.Println("✓ FRP client connected successfully!")
+	if r.tuiCallbacks == nil {
+		// Plain text mode
+		if r.frpClient.IsConnected() {
+			fmt.Println("✓ FRP client connected successfully!")
+		} else {
+			fmt.Println("⚠ FRP client starting...")
+		}
+		fmt.Println("")
+
+		// Show tunnel URLs with SSL status
+		r.showTunnelStatus()
+
+		fmt.Println("\nProxy running. Press Ctrl+C to stop...")
 	} else {
-		fmt.Println("⚠ FRP client starting...")
+		// TUI mode - update status
+		if r.frpClient.IsConnected() {
+			r.tuiCallbacks.UpdateStatus("online")
+		}
 	}
-	fmt.Println("")
 
-	// Show tunnel URLs with SSL status
-	r.showTunnelStatus()
+	// Set up signal handling (only for non-TUI mode)
+	if r.tuiCallbacks == nil {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	fmt.Println("\nProxy running. Press Ctrl+C to stop...")
-
-	// Set up signal handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Wait for signal or error
-	select {
-	case <-sigChan:
-		fmt.Println("\nShutting down...")
-	case err := <-errChan:
-		fmt.Fprintf(os.Stderr, "\nFRP client error: %v\n", err)
-		r.shutdown()
-		r.wg.Wait()
-		return err
+		// Wait for signal or error
+		select {
+		case <-sigChan:
+			fmt.Println("\nShutting down...")
+		case err := <-errChan:
+			fmt.Fprintf(os.Stderr, "\nFRP client error: %v\n", err)
+			r.shutdown()
+			r.wg.Wait()
+			return err
+		}
+	} else {
+		// TUI mode - wait for TUI quit, error, or context cancellation
+		select {
+		case err := <-errChan:
+			r.shutdown()
+			r.wg.Wait()
+			return err
+		case <-r.tuiCallbacks.QuitChan():
+			// TUI quit - cancel context to stop goroutines
+			r.cancel()
+		case <-r.ctx.Done():
+			// Context cancelled externally
+		}
 	}
 
 	r.shutdown()
@@ -153,7 +200,13 @@ func (r *FRPRunner) heartbeatLoop() {
 		case <-ticker.C:
 			_, err := r.client.Heartbeat(r.tunnel.ID)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: heartbeat failed: %v\n", err)
+				if r.tuiCallbacks != nil {
+					r.tuiCallbacks.UpdateStatus("offline")
+				} else {
+					fmt.Fprintf(os.Stderr, "Warning: heartbeat failed: %v\n", err)
+				}
+			} else if r.tuiCallbacks != nil {
+				r.tuiCallbacks.UpdateStatus("online")
 			}
 		case <-r.ctx.Done():
 			return
