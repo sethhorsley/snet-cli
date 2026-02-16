@@ -228,6 +228,12 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 	if t.Provider == "frp" || t.FRPAuthToken != "" {
 		runner := tunnel.NewFRPRunner(client, t, port, host, headerConfig)
 
+		regionName := "iad"              // Default/only region for now
+		latency := 50 * time.Millisecond // Placeholder
+
+		// Set region and version for web inspector
+		runner.SetRegionAndVersion(regionName, buildinfo.Version)
+
 		// Enable TUI if requested
 		if UseTUI && !Quiet {
 			if buildinfo.IsDevelopment() {
@@ -235,9 +241,6 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "⏱️  Total time to tunnel ready: %v\n", totalTime)
 				fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 			}
-
-			regionName := "iad"              // Default/only region for now
-			latency := 50 * time.Millisecond // Placeholder
 
 			// Get account name from tunnel
 			accountName := t.Account.Name

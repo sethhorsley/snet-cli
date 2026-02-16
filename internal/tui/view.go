@@ -178,7 +178,12 @@ func renderForwarding(m Model) string {
 		b.WriteString(URLStyle.Render(m.WildcardURL))
 		b.WriteString(ValueStyle.Render(" -> "))
 		b.WriteString(ValueStyle.Render(m.LocalURL))
+		b.WriteString("\n")
 	}
+
+	// Web interface
+	b.WriteString(LabelStyle.Render("Web Interface:"))
+	b.WriteString(URLStyle.Render("http://127.0.0.1:4040"))
 
 	return b.String()
 }

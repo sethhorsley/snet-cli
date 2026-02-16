@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>snet Web Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f5f5f5;
+            color: #262626;
+        }
+        
+        .header {
+            background: #fff;
+            border-bottom: 1px solid #e8e8e8;
+            padding: 16px 24px;
+        }
+        
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            font-weight: 500;
+            color: #7B61FF;
+        }
+        
+        .status {
+            display: flex;
+            gap: 24px;
+            font-size: 14px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #52c41a;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        
+        .info-panel {
+            background: #fff;
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        
+        .info-row {
+            display: flex;
+            gap: 32px;
+            font-size: 14px;
+        }
+        
+        .info-item {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .info-label {
+            color: #8c8c8c;
+        }
+        
+        .info-value {
+            color: #262626;
+            font-weight: 500;
+        }
+        
+        .url {
+            color: #1890ff;
+            text-decoration: none;
+        }
+        
+        .url:hover {
+            text-decoration: underline;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 16px;
+            height: calc(100vh - 200px);
+        }
+        
+        .requests-panel {
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .panel-header {
+            padding: 16px;
+            border-bottom: 1px solid #e8e8e8;
+            font-weight: 500;
+        }
+        
+        .requests-list {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        .request-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+            overflow: hidden;
+        }
+        
+        .request-item:hover {
+            background: #fafafa;
+        }
+        
+        .request-item.selected {
+            background: #e6f7ff;
+            border-left: 3px solid #1890ff;
+        }
+        
+        .request-header {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+        }
+        
+        .request-method {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-right: 8px;
+        }
+        
+        .method-GET { background: #52c41a; color: white; }
+        .method-POST { background: #1890ff; color: white; }
+        .method-PUT { background: #faad14; color: white; }
+        .method-DELETE { background: #f5222d; color: white; }
+        .method-PATCH { background: #722ed1; color: white; }
+        
+        .request-path {
+            font-size: 13px;
+            color: #262626;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .request-status {
+            font-size: 12px;
+            margin-top: 4px;
+            display: flex;
+            justify-content: space-between;
+            color: #8c8c8c;
+        }
+        
+        .status-code {
+            font-weight: 500;
+        }
+        
+        .status-2xx { color: #52c41a; }
+        .status-3xx { color: #1890ff; }
+        .status-4xx { color: #faad14; }
+        .status-5xx { color: #f5222d; }
+        
+        .detail-panel {
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        
+        .detail-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        
+        .detail-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #8c8c8c;
+            font-size: 14px;
+        }
+        
+        .detail-header {
+            padding: 16px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        
+        .detail-title {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        
+        .detail-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 13px;
+            color: #8c8c8c;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        
+        .tab {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover {
+            color: #1890ff;
+        }
+        
+        .tab.active {
+            color: #1890ff;
+            border-bottom-color: #1890ff;
+        }
+        
+        .tab-content {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+        }
+        
+        .headers-list {
+            font-size: 13px;
+        }
+        
+        .header-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+        }
+        
+        .header-name {
+            color: #8c8c8c;
+            width: 200px;
+            flex-shrink: 0;
+        }
+        
+        .header-value {
+            color: #262626;
+            word-break: break-all;
+        }
+        
+        .body-content {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            background: #fafafa;
+            padding: 12px;
+            border-radius: 4px;
+            overflow: auto;
+            white-space: pre;
+        }
+        
+        .no-requests {
+            text-align: center;
+            padding: 48px;
+            color: #8c8c8c;
+        }
+        
+        .timestamp {
+            font-size: 11px;
+            color: #bfbfbf;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>🌐 snet Web Interface</h1>
+            <div class="status">
+                <div class="status-item">
+                    <span class="status-dot"></span>
+                    <span id="status">Online</span>
+                </div>
+                <div class="status-item">
+                    <span>Region: <strong id="region">-</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="info-panel">
+            <div class="info-row">
+                <div class="info-item">
+                    <span class="info-label">Public URL:</span>
+                    <a href="" class="url" id="main-url" target="_blank">-</a>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Forwarding to:</span>
+                    <span class="info-value" id="local-url">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Version:</span>
+                    <span class="info-value" id="version">-</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="requests-panel">
+                <div class="panel-header">
+                    HTTP Requests (<span id="request-count">0</span>)
+                </div>
+                <div class="requests-list" id="requests-list">
+                    <div class="no-requests">No requests yet...</div>
+                </div>
+            </div>
+            
+            <div class="detail-panel">
+                <div class="detail-empty" id="detail-empty">
+                    Select a request to view details
+                </div>
+                <div id="detail-content" class="detail-content" style="display: none;">
+                    <div class="detail-header">
+                        <div class="detail-title" id="detail-title"></div>
+                        <div class="detail-meta">
+                            <span id="detail-status"></span>
+                            <span id="detail-duration"></span>
+                            <span id="detail-time"></span>
+                        </div>
+                    </div>
+                    <div class="tabs">
+                        <div class="tab active" data-tab="request-headers">Request Headers</div>
+                        <div class="tab" data-tab="response-headers">Response Headers</div>
+                        <div class="tab" data-tab="request-body">Request Body</div>
+                        <div class="tab" data-tab="response-body">Response Body</div>
+                    </div>
+                    <div class="tab-content" id="tab-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let requests = [];
+        let selectedRequestId = null;
+        
+        // Fetch tunnel info
+        fetch('/api/tunnel-info')
+            .then(r => r.json())
+            .then(info => {
+                document.getElementById('status').textContent = info.Status;
+                document.getElementById('region').textContent = info.Region;
+                document.getElementById('main-url').textContent = info.MainURL;
+                document.getElementById('main-url').href = info.MainURL;
+                document.getElementById('local-url').textContent = info.LocalURL;
+                document.getElementById('version').textContent = info.Version;
+            });
+        
+        // Fetch requests periodically
+        function fetchRequests() {
+            fetch('/api/requests')
+                .then(r => r.json())
+                .then(data => {
+                    requests = data || [];
+                    renderRequestsList();
+                });
+        }
+        
+        function renderRequestsList() {
+            const list = document.getElementById('requests-list');
+            document.getElementById('request-count').textContent = requests.length;
+            
+            if (requests.length === 0) {
+                list.innerHTML = '<div class="no-requests">No requests yet...</div>';
+                return;
+            }
+            
+            list.innerHTML = requests.map(req => {
+                const statusClass = `status-${Math.floor(req.status_code / 100)}xx`;
+                const selected = req.id === selectedRequestId ? 'selected' : '';
+                const duration = req.duration < 1000000 ? `${Math.round(req.duration/1000)}µs` :
+                                req.duration < 1000000000 ? `${Math.round(req.duration/1000000)}ms` :
+                                `${(req.duration/1000000000).toFixed(2)}s`;
+                
+                return `
+                    <div class="request-item ${selected}" data-id="${req.id}" onclick="selectRequest('${req.id}')">
+                        <div class="request-header">
+                            <span class="request-method method-${req.method}">${req.method}</span>
+                            <span class="request-path" title="${escapeHtml(req.path)}">${escapeHtml(req.path)}</span>
+                        </div>
+                        <div class="request-status">
+                            <span class="status-code ${statusClass}">${req.status_code} ${req.status_text}</span>
+                            <span>${duration}</span>
+                        </div>
+                        <div class="timestamp">${new Date(req.timestamp).toLocaleTimeString()}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function selectRequest(id) {
+            selectedRequestId = id;
+            renderRequestsList();
+            
+            const req = requests.find(r => r.id === id);
+            if (!req) return;
+            
+            document.getElementById('detail-empty').style.display = 'none';
+            document.getElementById('detail-content').style.display = 'flex';
+            
+            const statusClass = `status-${Math.floor(req.status_code / 100)}xx`;
+            const duration = req.duration < 1000000 ? `${Math.round(req.duration/1000)}µs` :
+                            req.duration < 1000000000 ? `${Math.round(req.duration/1000000)}ms` :
+                            `${(req.duration/1000000000).toFixed(2)}s`;
+            
+            document.getElementById('detail-title').textContent = `${req.method} ${req.path}`;
+            document.getElementById('detail-status').innerHTML = `<span class="${statusClass}">${req.status_code} ${req.status_text}</span>`;
+            document.getElementById('detail-duration').textContent = `Duration: ${duration}`;
+            document.getElementById('detail-time').textContent = new Date(req.timestamp).toLocaleString();
+            
+            showTab('request-headers');
+        }
+        
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tab === tabName);
+            });
+            
+            const req = requests.find(r => r.id === selectedRequestId);
+            if (!req) return;
+            
+            const content = document.getElementById('tab-content');
+            
+            if (tabName === 'request-headers' || tabName === 'response-headers') {
+                const headers = tabName === 'request-headers' ? req.request_headers : req.response_headers;
+                content.innerHTML = `
+                    <div class="headers-list">
+                        ${Object.entries(headers || {}).map(([name, values]) => `
+                            <div class="header-item">
+                                <div class="header-name">${name}:</div>
+                                <div class="header-value">${values.join(', ')}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (tabName === 'request-body') {
+                const body = req.request_body ? atob(req.request_body) : '(empty)';
+                content.innerHTML = `<div class="body-content">${escapeHtml(body)}</div>`;
+            } else if (tabName === 'response-body') {
+                const body = req.response_body ? atob(req.response_body) : '(empty)';
+                content.innerHTML = `<div class="body-content">${escapeHtml(body)}</div>`;
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Tab switching
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tab')) {
+                showTab(e.target.dataset.tab);
+            }
+        });
+        
+        // Initial fetch and periodic updates
+        fetchRequests();
+        setInterval(fetchRequests, 1000);
+    </script>
+</body>
+</html>

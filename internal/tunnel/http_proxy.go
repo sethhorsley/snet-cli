@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,15 +16,17 @@ type HTTPProxy struct {
 	listenPort   int
 	server       *http.Server
 	tuiCallbacks TUICallbacks
+	webInspector *WebInspector
 }
 
 // NewHTTPProxy creates a new HTTP proxy
-func NewHTTPProxy(targetHost string, targetPort int, listenPort int, tuiCallbacks TUICallbacks) *HTTPProxy {
+func NewHTTPProxy(targetHost string, targetPort int, listenPort int, tuiCallbacks TUICallbacks, webInspector *WebInspector) *HTTPProxy {
 	return &HTTPProxy{
 		targetHost:   targetHost,
 		targetPort:   targetPort,
 		listenPort:   listenPort,
 		tuiCallbacks: tuiCallbacks,
+		webInspector: webInspector,
 	}
 }
 
@@ -32,6 +35,14 @@ func (p *HTTPProxy) Start() error {
 	// Create proxy handler
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		startTime := time.Now()
+
+		// Read request body
+		var requestBody bytes.Buffer
+		if r.Body != nil {
+			io.Copy(&requestBody, r.Body)
+			r.Body.Close()
+			r.Body = io.NopCloser(bytes.NewReader(requestBody.Bytes()))
+		}
 
 		// Build target URL
 		targetURL := &url.URL{
@@ -42,7 +53,7 @@ func (p *HTTPProxy) Start() error {
 		}
 
 		// Create new request to target
-		proxyReq, err := http.NewRequest(r.Method, targetURL.String(), r.Body)
+		proxyReq, err := http.NewRequest(r.Method, targetURL.String(), bytes.NewReader(requestBody.Bytes()))
 		if err != nil {
 			http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
 			return
@@ -70,6 +81,10 @@ func (p *HTTPProxy) Start() error {
 		}
 		defer resp.Body.Close()
 
+		// Read response body
+		var responseBody bytes.Buffer
+		io.Copy(&responseBody, resp.Body)
+
 		// Copy response headers
 		for name, values := range resp.Header {
 			for _, value := range values {
@@ -80,13 +95,34 @@ func (p *HTTPProxy) Start() error {
 		// Write status code
 		w.WriteHeader(resp.StatusCode)
 
-		// Copy response body
-		io.Copy(w, resp.Body)
+		// Write response body
+		w.Write(responseBody.Bytes())
 
-		// Log request
+		// Log request to TUI
 		duration := time.Since(startTime)
 		if p.tuiCallbacks != nil {
 			p.tuiCallbacks.LogHTTPRequest(r.Method, r.URL.Path, resp.StatusCode, duration, true)
+		}
+
+		// Log to web inspector
+		if p.webInspector != nil {
+			statusText := http.StatusText(resp.StatusCode)
+			p.webInspector.AddRequest(InspectorRequest{
+				ID:              fmt.Sprintf("%d", time.Now().UnixNano()),
+				Timestamp:       startTime,
+				Method:          r.Method,
+				Path:            r.URL.Path,
+				StatusCode:      resp.StatusCode,
+				StatusText:      statusText,
+				Duration:        duration,
+				RequestHeaders:  r.Header,
+				ResponseHeaders: resp.Header,
+				RequestBody:     requestBody.Bytes(),
+				ResponseBody:    responseBody.Bytes(),
+				RemoteAddr:      r.RemoteAddr,
+				ContentType:     resp.Header.Get("Content-Type"),
+				ContentLength:   resp.ContentLength,
+			})
 		}
 	})
 

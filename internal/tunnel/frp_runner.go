@@ -30,11 +30,14 @@ type FRPRunner struct {
 	connectionID int
 	frpClient    *EmbeddedFRPClient
 	httpProxy    *HTTPProxy
+	webInspector *WebInspector
 	ctx          context.Context
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	tuiCallbacks TUICallbacks
 	headerConfig *HeaderConfig
+	region       string
+	version      string
 }
 
 // NewFRPRunner creates a new FRP tunnel runner
@@ -59,15 +62,38 @@ func (r *FRPRunner) SetTUICallbacks(callbacks TUICallbacks) {
 	r.tuiCallbacks = callbacks
 }
 
+// SetRegionAndVersion sets the region and version for display
+func (r *FRPRunner) SetRegionAndVersion(region, version string) {
+	r.region = region
+	r.version = version
+}
+
 // Run starts the FRP tunnel and blocks until it exits
 func (r *FRPRunner) Run() error {
-	// If TUI is enabled, start HTTP proxy to intercept requests
+	// If TUI is enabled, start HTTP proxy and web inspector to intercept requests
 	actualPort := r.port
 	actualHost := r.host
 	if r.tuiCallbacks != nil {
+		// Start web inspector
+		webInspectorPort := 4040 // Default ngrok inspect port
+		tunnelInfo := TunnelInfo{
+			Status:      "online",
+			MainURL:     r.tunnel.URL,
+			WildcardURL: r.tunnel.WildcardURL,
+			LocalURL:    fmt.Sprintf("http://%s:%d", r.host, r.port),
+			Region:      r.region,
+			Version:     r.version,
+		}
+		r.webInspector = NewWebInspector(webInspectorPort, 100, tunnelInfo)
+		if err := r.webInspector.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to start web inspector: %v\n", err)
+		} else {
+			fmt.Printf("\nWeb Interface: http://127.0.0.1:%d\n", webInspectorPort)
+		}
+
 		// Find an available port for the proxy
 		proxyPort := r.port + 10000 // Use high port to avoid conflicts
-		r.httpProxy = NewHTTPProxy(r.host, r.port, proxyPort, r.tuiCallbacks)
+		r.httpProxy = NewHTTPProxy(r.host, r.port, proxyPort, r.tuiCallbacks, r.webInspector)
 		if err := r.httpProxy.Start(); err != nil {
 			return fmt.Errorf("failed to start HTTP proxy: %w", err)
 		}
@@ -282,6 +308,11 @@ func (r *FRPRunner) pollSSLStatus() {
 
 // shutdown gracefully stops the tunnel
 func (r *FRPRunner) shutdown() {
+	// Stop web inspector
+	if r.webInspector != nil {
+		r.webInspector.Stop()
+	}
+
 	// Stop HTTP proxy
 	if r.httpProxy != nil {
 		r.httpProxy.Stop()
