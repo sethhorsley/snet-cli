@@ -29,6 +29,7 @@ type FRPRunner struct {
 	host         string
 	connectionID int
 	frpClient    *EmbeddedFRPClient
+	httpProxy    *HTTPProxy
 	ctx          context.Context
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
@@ -60,9 +61,24 @@ func (r *FRPRunner) SetTUICallbacks(callbacks TUICallbacks) {
 
 // Run starts the FRP tunnel and blocks until it exits
 func (r *FRPRunner) Run() error {
+	// If TUI is enabled, start HTTP proxy to intercept requests
+	actualPort := r.port
+	actualHost := r.host
+	if r.tuiCallbacks != nil {
+		// Find an available port for the proxy
+		proxyPort := r.port + 10000 // Use high port to avoid conflicts
+		r.httpProxy = NewHTTPProxy(r.host, r.port, proxyPort, r.tuiCallbacks)
+		if err := r.httpProxy.Start(); err != nil {
+			return fmt.Errorf("failed to start HTTP proxy: %w", err)
+		}
+		// Point FRP to the proxy instead of the application
+		actualPort = proxyPort
+		actualHost = "127.0.0.1"
+	}
+
 	// Create embedded FRP client (suppress logs if TUI mode is enabled)
 	suppressLog := r.tuiCallbacks != nil
-	frpClient, err := NewEmbeddedFRPClient(r.tunnel, r.port, r.host, suppressLog, r.tuiCallbacks, r.headerConfig)
+	frpClient, err := NewEmbeddedFRPClient(r.tunnel, actualPort, actualHost, suppressLog, r.tuiCallbacks, r.headerConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create FRP client: %w", err)
 	}
@@ -266,6 +282,11 @@ func (r *FRPRunner) pollSSLStatus() {
 
 // shutdown gracefully stops the tunnel
 func (r *FRPRunner) shutdown() {
+	// Stop HTTP proxy
+	if r.httpProxy != nil {
+		r.httpProxy.Stop()
+	}
+
 	// Stop FRP client
 	if r.frpClient != nil {
 		r.frpClient.Stop()
