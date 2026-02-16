@@ -259,10 +259,12 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			}
 
 			// Create TUI wrapper with real data
+			localURL := fmt.Sprintf("http://%s:%d", host, port)
 			tuiWrapper := tui.NewTUIWrapper(
 				tunnelName,
 				t.URL,
 				t.WildcardURL,
+				localURL,
 				accountName,
 				regionName,
 				buildinfo.Version,

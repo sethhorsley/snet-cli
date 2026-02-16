@@ -13,19 +13,19 @@ func renderMain(m Model) string {
 
 	// Header
 	content.WriteString(renderHeader(m))
-	content.WriteString("\n\n")
+	content.WriteString("\n")
 
 	// Session info
 	content.WriteString(renderSessionInfo(m))
-	content.WriteString("\n\n")
+	content.WriteString("\n")
 
 	// Forwarding URLs
 	content.WriteString(renderForwarding(m))
-	content.WriteString("\n\n")
+	content.WriteString("\n")
 
 	// Connection stats
 	content.WriteString(renderStats(m))
-	content.WriteString("\n\n")
+	content.WriteString("\n")
 
 	// HTTP request log (fills remaining space)
 	content.WriteString(renderRequestLog(m))
@@ -59,20 +59,25 @@ func renderMain(m Model) string {
 
 // renderHeader renders the header section
 func renderHeader(m Model) string {
-	title := "snet - Self-Hosted Tunnels"
+	var b strings.Builder
 
-	// Status indicator
+	// Version at the very top
+	b.WriteString(LabelStyle.Render("Version:"))
+	b.WriteString(ValueStyle.Render(m.Version))
+	b.WriteString("\n\n")
+
+	// Title and status
+	title := "snet - Self-Hosted Tunnels"
 	statusText := strings.ToUpper(m.Status)
 	statusStyle := GetStatusTextStyle(m.Status)
 	status := statusStyle.Render(statusText)
 
-	// Combine
-	header := fmt.Sprintf("%s    %s",
+	b.WriteString(fmt.Sprintf("%s    %s",
 		HeaderStyle.Render(title),
 		status,
-	)
+	))
 
-	return header
+	return b.String()
 }
 
 // renderSessionInfo renders session information
@@ -90,11 +95,6 @@ func renderSessionInfo(m Model) string {
 	b.WriteString(ValueStyle.Render(regionText))
 	b.WriteString("\n")
 
-	// Version
-	b.WriteString(LabelStyle.Render("Version:"))
-	b.WriteString(ValueStyle.Render(m.Version))
-	b.WriteString("\n")
-
 	// Tunnel name
 	tunnelName := m.TunnelName
 	if m.IsReconnected {
@@ -103,40 +103,58 @@ func renderSessionInfo(m Model) string {
 	b.WriteString(LabelStyle.Render("Tunnel:"))
 	b.WriteString(ValueStyle.Render(tunnelName))
 
-	// Header configuration (if any)
+	// Header configuration (if any) - compact view
 	hasHeaders := m.HostHeaderRewrite != "" || len(m.RequestHeaders) > 0 || len(m.ResponseHeaders) > 0
 	if hasHeaders {
 		b.WriteString("\n")
-		b.WriteString(LabelStyle.Render("Headers:"))
-		b.WriteString("\n")
 
-		// Host header rewrite
+		// Count total headers
+		headerCount := 0
 		if m.HostHeaderRewrite != "" {
-			b.WriteString(LabelStyle.Render("  Host →"))
-			b.WriteString(ValueStyle.Render(m.HostHeaderRewrite))
-			b.WriteString("\n")
+			headerCount++
 		}
+		headerCount += len(m.RequestHeaders)
+		headerCount += len(m.ResponseHeaders)
 
-		// Request headers
-		if len(m.RequestHeaders) > 0 {
-			b.WriteString(LabelStyle.Render("  Request:"))
+		// Show compact header summary
+		if m.ShowHeaderDetails {
+			b.WriteString(LabelStyle.Render("Headers:"))
+			b.WriteString(ValueStyle.Render(fmt.Sprintf("%d set", headerCount)))
+			b.WriteString(ShortcutDescStyle.Render(" (press 'h' to hide)"))
 			b.WriteString("\n")
-			for name, value := range m.RequestHeaders {
-				b.WriteString(LabelStyle.Render(fmt.Sprintf("    %s:", name)))
-				b.WriteString(ValueStyle.Render(value))
+
+			// Host header rewrite
+			if m.HostHeaderRewrite != "" {
+				b.WriteString(LabelStyle.Render("  Host →"))
+				b.WriteString(ValueStyle.Render(m.HostHeaderRewrite))
 				b.WriteString("\n")
 			}
-		}
 
-		// Response headers
-		if len(m.ResponseHeaders) > 0 {
-			b.WriteString(LabelStyle.Render("  Response:"))
-			b.WriteString("\n")
-			for name, value := range m.ResponseHeaders {
-				b.WriteString(LabelStyle.Render(fmt.Sprintf("    %s:", name)))
-				b.WriteString(ValueStyle.Render(value))
+			// Request headers
+			if len(m.RequestHeaders) > 0 {
+				b.WriteString(LabelStyle.Render("  Request:"))
 				b.WriteString("\n")
+				for name, value := range m.RequestHeaders {
+					b.WriteString(LabelStyle.Render(fmt.Sprintf("    %s:", name)))
+					b.WriteString(ValueStyle.Render(value))
+					b.WriteString("\n")
+				}
 			}
+
+			// Response headers
+			if len(m.ResponseHeaders) > 0 {
+				b.WriteString(LabelStyle.Render("  Response:"))
+				b.WriteString("\n")
+				for name, value := range m.ResponseHeaders {
+					b.WriteString(LabelStyle.Render(fmt.Sprintf("    %s:", name)))
+					b.WriteString(ValueStyle.Render(value))
+					b.WriteString("\n")
+				}
+			}
+		} else {
+			b.WriteString(LabelStyle.Render("Headers:"))
+			b.WriteString(ValueStyle.Render(fmt.Sprintf("%d set", headerCount)))
+			b.WriteString(ShortcutDescStyle.Render(" (press 'h' to show)"))
 		}
 	}
 
@@ -147,19 +165,19 @@ func renderSessionInfo(m Model) string {
 func renderForwarding(m Model) string {
 	var b strings.Builder
 
-	b.WriteString(HeaderStyle.Render("Forwarding"))
-	b.WriteString("\n")
-
-	// Main URL
-	b.WriteString(LabelStyle.Render("Web Interface:"))
+	// Main forwarding with arrow format (aligned with other values)
+	b.WriteString(LabelStyle.Render("Forwarding:"))
 	b.WriteString(URLStyle.Render(m.MainURL))
+	b.WriteString(ValueStyle.Render(" -> "))
+	b.WriteString(ValueStyle.Render(m.LocalURL))
 	b.WriteString("\n")
 
-	// Wildcard URL (if enabled)
+	// Wildcard forwarding (if enabled)
 	if m.IsWildcard && m.WildcardURL != "" {
 		b.WriteString(LabelStyle.Render("Wildcard:"))
 		b.WriteString(URLStyle.Render(m.WildcardURL))
-		b.WriteString("\n")
+		b.WriteString(ValueStyle.Render(" -> "))
+		b.WriteString(ValueStyle.Render(m.LocalURL))
 	}
 
 	return b.String()
@@ -169,20 +187,18 @@ func renderForwarding(m Model) string {
 func renderStats(m Model) string {
 	var b strings.Builder
 
-	b.WriteString(HeaderStyle.Render("Connections"))
+	// Connections label
+	b.WriteString(LabelStyle.Render("Connections:"))
+	b.WriteString(ValueStyle.Render("ttl     opn"))
 	b.WriteString("\n")
 
-	// Total and open connections
-	b.WriteString(LabelStyle.Render("Total:"))
-	b.WriteString(ValueStyle.Render(fmt.Sprintf("%d", m.TotalConnections)))
-	b.WriteString("    ")
+	// Values under the labels, aligned right (20 spaces for label column)
+	b.WriteString(LabelStyle.Render(""))
+	b.WriteString(ValueStyle.Render(fmt.Sprintf("%-7d %d", m.TotalConnections, m.OpenConnections)))
 
-	b.WriteString(LabelStyle.Render("Open:"))
-	b.WriteString(ValueStyle.Render(fmt.Sprintf("%d", m.OpenConnections)))
-	b.WriteString("\n")
-
-	// Response times
+	// Response times (only if we have connections)
 	if m.TotalConnections > 0 {
+		b.WriteString("\n")
 		b.WriteString(LabelStyle.Render("Response Times:"))
 		b.WriteString(ValueStyle.Render(fmt.Sprintf(
 			"rt1=%s  rt5=%s  p50=%s  p90=%s",
@@ -208,7 +224,7 @@ func renderRequestLog(m Model) string {
 		header += " (all logs - press 't' to filter)"
 	}
 	b.WriteString(HeaderStyle.Render(header))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
 	// Table header
 	b.WriteString(renderRequestTableHeader())
@@ -319,6 +335,7 @@ func renderFooter(m Model) string {
 		// Normal shortcuts
 		shortcuts := []string{
 			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[t]"), ShortcutDescStyle.Render("toggle logs")),
+			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[h]"), ShortcutDescStyle.Render("toggle headers")),
 			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[c]"), ShortcutDescStyle.Render("clear")),
 			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[?]"), ShortcutDescStyle.Render("help")),
 			fmt.Sprintf("%s %s", ShortcutKeyStyle.Render("[Ctrl+C]"), ShortcutDescStyle.Render("quit")),
@@ -341,6 +358,7 @@ func renderHelp(m Model) string {
 		desc string
 	}{
 		{"t", "Toggle between app logs and all tunnel logs"},
+		{"h", "Toggle header details"},
 		{"c", "Clear request history"},
 		{"?", "Show/hide this help screen"},
 		{"q, Ctrl+C", "Quit and stop tunnel"},

@@ -20,6 +20,7 @@ type Model struct {
 	TunnelName        string
 	MainURL           string
 	WildcardURL       string
+	LocalURL          string // Local address being forwarded (e.g., http://localhost:3000)
 	IsWildcard        bool
 	IsReconnected     bool
 	HeaderSummary     string            // Summary of header configuration
@@ -44,6 +45,7 @@ type Model struct {
 	Width              int
 	Height             int
 	ShowHelp           bool
+	ShowHeaderDetails  bool // Toggle to show/hide header details
 	Quitting           bool
 	ConfirmQuit        bool      // Waiting for second quit confirmation
 	QuitConfirmExpires time.Time // When quit confirmation expires
@@ -91,7 +93,7 @@ type TunnelLoadedMsg struct {
 }
 
 // New creates a new TUI model
-func New(tunnelName, mainURL, wildcardURL, accountName, region, version string, isWildcard, isReconnected bool, latency time.Duration, headerSummary string, hostHeaderRewrite string, requestHeaders, responseHeaders map[string]string) Model {
+func New(tunnelName, mainURL, wildcardURL, localURL, accountName, region, version string, isWildcard, isReconnected bool, latency time.Duration, headerSummary string, hostHeaderRewrite string, requestHeaders, responseHeaders map[string]string) Model {
 	return Model{
 		Status:            "connecting",
 		AccountName:       accountName,
@@ -102,6 +104,7 @@ func New(tunnelName, mainURL, wildcardURL, accountName, region, version string, 
 		TunnelName:        tunnelName,
 		MainURL:           mainURL,
 		WildcardURL:       wildcardURL,
+		LocalURL:          localURL,
 		IsWildcard:        isWildcard,
 		IsReconnected:     isReconnected,
 		HeaderSummary:     headerSummary,
@@ -208,6 +211,10 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "c":
 		m.Requests = make([]HTTPRequest, 0)
+		return m, nil
+
+	case "h":
+		m.ShowHeaderDetails = !m.ShowHeaderDetails
 		return m, nil
 
 	case "?":
