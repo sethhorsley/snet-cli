@@ -1,0 +1,210 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Beta builds from main branch (development mode)
+  build-beta:
+    name: Build Beta (main branch)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            artifact: snet-darwin-amd64-beta
+          - goos: darwin
+            goarch: arm64
+            artifact: snet-darwin-arm64-beta
+          - goos: linux
+            goarch: amd64
+            artifact: snet-linux-amd64-beta
+          - goos: linux
+            goarch: arm64
+            artifact: snet-linux-arm64-beta
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev-$(git rev-parse --short HEAD)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+      
+      - name: Build beta (development mode)
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-X github.com/seth4242/snet/internal/buildinfo.Version=${{ steps.version.outputs.version }} -X github.com/seth4242/snet/internal/buildinfo.Mode=development"
+          go build -ldflags "$LDFLAGS" -o ${{ matrix.artifact }} .
+          chmod +x ${{ matrix.artifact }}
+      
+      - name: Upload beta artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          retention-days: 30
+
+  # Production builds from tags
+  build-production:
+    name: Build Production Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            artifact: snet-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            artifact: snet-darwin-arm64
+          - goos: linux
+            goarch: amd64
+            artifact: snet-linux-amd64
+          - goos: linux
+            goarch: arm64
+            artifact: snet-linux-arm64
+          - goos: windows
+            goarch: amd64
+            artifact: snet-windows-amd64.exe
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+      
+      - name: Build production
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-X github.com/seth4242/snet/internal/buildinfo.Version=${{ steps.version.outputs.version }} -X github.com/seth4242/snet/internal/buildinfo.Mode=production"
+          go build -ldflags "$LDFLAGS" -o ${{ matrix.artifact }} .
+          chmod +x ${{ matrix.artifact }} || true
+      
+      - name: Create tarball (Unix)
+        if: matrix.goos != 'windows'
+        run: |
+          cp ${{ matrix.artifact }} snet
+          tar czf ${{ matrix.artifact }}.tar.gz snet
+          sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
+      
+      - name: Create zip (Windows)
+        if: matrix.goos == 'windows'
+        run: |
+          cp ${{ matrix.artifact }} snet.exe
+          zip ${{ matrix.artifact }}.zip snet.exe
+          sha256sum ${{ matrix.artifact }}.zip > ${{ matrix.artifact }}.zip.sha256
+      
+      - name: Upload production artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.tar.gz.sha256
+            ${{ matrix.artifact }}.zip
+            ${{ matrix.artifact }}.zip.sha256
+          retention-days: 90
+
+  # Create GitHub Release for tags
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-production
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.tar.gz.sha256
+            artifacts/**/*.zip
+            artifacts/**/*.zip.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Test builds on PRs
+  test-build:
+    name: Test Build (PR)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      
+      - name: Build
+        run: |
+          go build -o snet .
+      
+      - name: Run tests
+        run: |
+          go test -v ./...
+      
+      - name: Test version output
+        run: |
+          chmod +x snet
+          ./snet version

@@ -6,8 +6,36 @@ A CLI tool for creating secure HTTPS tunnels from localhost to public URLs on se
 
 ### Homebrew (macOS/Linux)
 
+**From custom tap:**
 ```bash
 brew install seth4242/tap/snet
+```
+
+**Or directly from this repository:**
+```bash
+brew install sethhorsley/snet-cli/snet
+```
+
+### Download Pre-built Binaries
+
+Download from [GitHub Releases](https://github.com/sethhorsley/snet-cli/releases):
+
+```bash
+# macOS Apple Silicon (M1/M2/M3)
+curl -L https://github.com/sethhorsley/snet-cli/releases/latest/download/snet-darwin-arm64.tar.gz | tar xz
+sudo mv snet-darwin-arm64 /usr/local/bin/snet
+
+# macOS Intel
+curl -L https://github.com/sethhorsley/snet-cli/releases/latest/download/snet-darwin-amd64.tar.gz | tar xz
+sudo mv snet-darwin-amd64 /usr/local/bin/snet
+
+# Linux x86_64
+curl -L https://github.com/sethhorsley/snet-cli/releases/latest/download/snet-linux-amd64.tar.gz | tar xz
+sudo mv snet-linux-amd64 /usr/local/bin/snet
+
+# Linux ARM64
+curl -L https://github.com/sethhorsley/snet-cli/releases/latest/download/snet-linux-arm64.tar.gz | tar xz
+sudo mv snet-linux-arm64 /usr/local/bin/snet
 ```
 
 ### From Source
