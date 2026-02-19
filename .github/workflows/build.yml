@@ -181,6 +181,71 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract SHA256 values
+        id: sha
+        run: |
+          echo "darwin_arm64=$(awk '{print $1}' artifacts/snet-darwin-arm64/snet-darwin-arm64.tar.gz.sha256)" >> $GITHUB_OUTPUT
+          echo "darwin_amd64=$(awk '{print $1}' artifacts/snet-darwin-amd64/snet-darwin-amd64.tar.gz.sha256)" >> $GITHUB_OUTPUT
+          echo "linux_arm64=$(awk '{print $1}'  artifacts/snet-linux-arm64/snet-linux-arm64.tar.gz.sha256)"   >> $GITHUB_OUTPUT
+          echo "linux_amd64=$(awk '{print $1}'  artifacts/snet-linux-amd64/snet-linux-amd64.tar.gz.sha256)"  >> $GITHUB_OUTPUT
+
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: sethhorsley/homebrew-snet-cli
+          token: ${{ secrets.TAP_REPO_TOKEN }}
+          path: tap
+
+      - name: Write updated formula
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+          cat > tap/Formula/snet.rb <<FORMULA
+          class Snet < Formula
+            desc "Secure HTTPS tunnels from localhost to public URLs"
+            homepage "https://github.com/sethhorsley/snet-cli"
+            version "${VERSION_NO_V}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/sethhorsley/snet-cli/releases/download/${VERSION}/snet-darwin-arm64.tar.gz"
+                sha256 "${{ steps.sha.outputs.darwin_arm64 }}"
+              else
+                url "https://github.com/sethhorsley/snet-cli/releases/download/${VERSION}/snet-darwin-amd64.tar.gz"
+                sha256 "${{ steps.sha.outputs.darwin_amd64 }}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/sethhorsley/snet-cli/releases/download/${VERSION}/snet-linux-arm64.tar.gz"
+                sha256 "${{ steps.sha.outputs.linux_arm64 }}"
+              else
+                url "https://github.com/sethhorsley/snet-cli/releases/download/${VERSION}/snet-linux-amd64.tar.gz"
+                sha256 "${{ steps.sha.outputs.linux_amd64 }}"
+              end
+            end
+
+            def install
+              bin.install "snet"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/snet version")
+            end
+          end
+          FORMULA
+          sed -i 's/^          //' tap/Formula/snet.rb
+
+      - name: Push formula to tap
+        run: |
+          cd tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/snet.rb
+          git diff --staged --quiet || git commit -m "snet ${{ steps.version.outputs.version }}" && git push
+
   # Test builds on PRs
   test-build:
     name: Test Build (PR)
