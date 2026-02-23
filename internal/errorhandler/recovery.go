@@ -65,14 +65,15 @@ Authentication with the FRP server failed.
 Details: %s
 
 This could mean:
-  • Your tunnel credentials are invalid
+  • Your API token has expired or is invalid
+  • The tunnel credentials are out of sync
   • The tunnel has been deleted
-  • The server configuration has changed
 
 Try these steps:
-  1. Create a new tunnel: snet http 3000 --name new-tunnel
-  2. Check your account status online
-  3. Contact support if the issue persists
+  1. Re-authenticate: snet login
+  2. Create a new tunnel: snet http 3000 --name new-tunnel
+  3. Check your account status online
+  4. Contact support if the issue persists
 `, errMsg)
 	}
 
