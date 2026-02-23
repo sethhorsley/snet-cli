@@ -141,7 +141,18 @@ func (r *FRPRunner) Run() error {
 			}
 		}()
 		if err := r.frpClient.Start(r.ctx); err != nil && err != context.Canceled {
-			errChan <- err
+			// Add connection details to error
+			serverAddr := r.tunnel.FRPServerAddr
+			if serverAddr == "" {
+				serverAddr = "snet-frp.fly.dev"
+			}
+			serverPort := r.tunnel.FRPServerPort
+			if serverPort == 0 {
+				serverPort = 7000
+			}
+			wrappedErr := fmt.Errorf("FRP client error: %w (connecting to %s:%d with proxy name: %s)",
+				err, serverAddr, serverPort, r.tunnel.FRPProxyName)
+			errChan <- wrappedErr
 		}
 	}()
 
