@@ -130,11 +130,16 @@ func (r *FRPRunner) Run() error {
 	r.wg.Add(1)
 	go r.heartbeatLoop()
 
-	// Start FRP client in a goroutine
+	// Start FRP client in a goroutine with panic recovery
 	r.wg.Add(1)
 	errChan := make(chan error, 1)
 	go func() {
 		defer r.wg.Done()
+		defer func() {
+			if rec := recover(); rec != nil {
+				errChan <- fmt.Errorf("FRP client panic: %v", rec)
+			}
+		}()
 		if err := r.frpClient.Start(r.ctx); err != nil && err != context.Canceled {
 			errChan <- err
 		}
@@ -235,6 +240,11 @@ func (r *FRPRunner) reportDisconnect() {
 // heartbeatLoop sends heartbeats every 30 seconds
 func (r *FRPRunner) heartbeatLoop() {
 	defer r.wg.Done()
+	defer func() {
+		if rec := recover(); rec != nil {
+			fmt.Fprintf(os.Stderr, "Heartbeat loop panic: %v\n", rec)
+		}
+	}()
 
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -308,6 +318,12 @@ func (r *FRPRunner) pollSSLStatus() {
 
 // shutdown gracefully stops the tunnel
 func (r *FRPRunner) shutdown() {
+	// Ensure cursor is visible when exiting
+	defer func() {
+		fmt.Print("\033[?25h") // Show cursor
+		fmt.Print("\033[0m")   // Reset colors
+	}()
+
 	// Stop web inspector
 	if r.webInspector != nil {
 		r.webInspector.Stop()

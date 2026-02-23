@@ -11,6 +11,7 @@ import (
 	"github.com/seth4242/snet/internal/api"
 	"github.com/seth4242/snet/internal/buildinfo"
 	"github.com/seth4242/snet/internal/config"
+	"github.com/seth4242/snet/internal/errorhandler"
 	"github.com/seth4242/snet/internal/tui"
 	"github.com/seth4242/snet/internal/tunnel"
 	"github.com/spf13/cobra"
@@ -294,7 +295,22 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			// Run tunnel (blocks until quit)
 			err := runner.Run()
 			tuiWrapper.Stop()
-			return err
+
+			// Give TUI time to fully clean up before printing error
+			time.Sleep(100 * time.Millisecond)
+
+			if err != nil {
+				// Force terminal to a completely clean state
+				// Clear the line and move cursor to start
+				fmt.Print("\033[2K\r")
+
+				// Print error to stdout (not stderr) after TUI cleanup
+				fmt.Println()
+				fmt.Println(errorhandler.FormatConnectionError(err))
+				// Return nil to prevent cobra from printing the error again
+				return nil
+			}
+			return nil
 		}
 
 		// Plain text mode
@@ -304,7 +320,14 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			fmt.Println("Press Ctrl+C to disconnect.\n")
 		}
 
-		return runner.Run()
+		err := runner.Run()
+		if err != nil {
+			// Ensure we're on a clean line
+			fmt.Fprint(os.Stderr, "\n")
+			// Format FRP connection errors nicely
+			fmt.Fprintln(os.Stderr, errorhandler.FormatConnectionError(err))
+		}
+		return err
 	} else {
 		runner := tunnel.NewRunner(client, t, port, host)
 

@@ -89,6 +89,8 @@ type Tunnel struct {
 	CloudflareTunnelID    string     `json:"cloudflare_tunnel_id,omitempty"`
 	FRPAuthToken          string     `json:"frp_auth_token,omitempty"`
 	FRPProxyName          string     `json:"frp_proxy_name,omitempty"`
+	FRPServerAddr         string     `json:"frp_server_addr,omitempty"`
+	FRPServerPort         int        `json:"frp_server_port,omitempty"`
 	Account               Account    `json:"account"`
 }
 

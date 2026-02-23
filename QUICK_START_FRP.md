@@ -2,7 +2,7 @@
 
 ## Current Setup Status
 
-✅ **FRP Server**: Running on Fly.io (149.248.211.110)  
+✅ **FRP Server**: Running on Fly.io (snet-frp.fly.dev)  
 ✅ **snet CLI**: Built with FRP support  
 ✅ **Rails API**: Migrated with FRP fields  
 ✅ **Test Tunnel**: Currently running (PID 52805)
@@ -31,7 +31,7 @@ To install frpc:
 Your tunnel is configured! To connect manually:
 
   frpc tcp \
-    --server_addr 149.248.211.110 \
+    --server_addr snet-frp.fly.dev \
     --server_port 7000 \
     --token LqwuyC9iYRtWEEEawHdHOd3YtiSBt9ffyyykng58hXU= \
     --proxy_name testuser-abc12345 \
@@ -163,7 +163,7 @@ curl https://<slug>.<account>.dev.seth4242.net/up
 **Checks**:
 1. Is frpc process running? `ps aux | grep frpc`
 2. Is Rails server on localhost:3000? `curl localhost:3000/up`
-3. Is FRP server reachable? `nc -zv 149.248.211.110 7000`
+3. Is FRP server reachable? `nc -zv snet-frp.fly.dev 7000`
 4. Check FRP server logs: `cd fly-frp && fly logs -a seth4242-frp`
 
 ## Architecture Summary

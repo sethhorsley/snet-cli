@@ -89,11 +89,23 @@ func NewEmbeddedFRPClient(tunnel *api.Tunnel, port int, host string, suppressLog
 		logLevel = "info"
 	}
 
+	// Determine FRP server address and port
+	serverAddr := tunnel.FRPServerAddr
+	serverPort := tunnel.FRPServerPort
+
+	// Fallback to default if not provided by API
+	if serverAddr == "" {
+		serverAddr = "snet-frp.fly.dev"
+	}
+	if serverPort == 0 {
+		serverPort = 7000
+	}
+
 	// Configure FRP client
 	cfg := &v1.ClientConfig{
 		ClientCommonConfig: v1.ClientCommonConfig{
-			ServerAddr: "149.248.211.110",
-			ServerPort: 7000,
+			ServerAddr: serverAddr,
+			ServerPort: serverPort,
 			Auth: v1.AuthClientConfig{
 				Method: v1.AuthMethodToken,
 				Token:  tunnel.FRPAuthToken,

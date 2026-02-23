@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -59,8 +60,17 @@ func (w *TUIWrapper) Start() error {
 
 	// Run in goroutine and signal when it quits
 	go func() {
+		defer func() {
+			// Ensure terminal cleanup on panic
+			if r := recover(); r != nil {
+				w.ensureTerminalCleanup()
+				panic(r) // Re-panic after cleanup
+			}
+		}()
+
 		if _, err := w.program.Run(); err != nil {
-			// Log error but don't crash
+			// Ensure terminal is cleaned up on error
+			w.ensureTerminalCleanup()
 		}
 		// Signal that TUI has quit
 		close(w.quitChan)
@@ -69,11 +79,25 @@ func (w *TUIWrapper) Start() error {
 	return nil
 }
 
-// Stop stops the TUI program
+// Stop stops the TUI program and ensures terminal cleanup
 func (w *TUIWrapper) Stop() {
 	if w.program != nil {
 		w.program.Quit()
+		// Give TUI time to clean up gracefully
+		// The TUI should clean up automatically, but we ensure it
+		w.ensureTerminalCleanup()
 	}
+}
+
+// ensureTerminalCleanup ensures the terminal is in a clean state
+func (w *TUIWrapper) ensureTerminalCleanup() {
+	// This is idempotent - safe to call multiple times
+	// Explicitly restore terminal to normal state in correct order
+	fmt.Print("\033[?1049l") // Exit alt screen first
+	fmt.Print("\033[?25h")   // Show cursor
+	fmt.Print("\033[0m")     // Reset all attributes (colors, bold, etc)
+	fmt.Print("\033[?7h")    // Enable line wrap
+	fmt.Print("\r")          // Carriage return to start of line
 }
 
 // QuitChan returns a channel that closes when the TUI quits
