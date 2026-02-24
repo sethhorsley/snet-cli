@@ -100,6 +100,24 @@ type Account struct {
 	PrefixID string     `json:"prefix_id"`
 	Slug     string     `json:"slug"`
 	Name     string     `json:"name"`
+	Personal bool       `json:"personal,omitempty"`
+	Owner    bool       `json:"owner,omitempty"`
+}
+
+// User represents a user from the API
+type User struct {
+	ID        int       `json:"id"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	Admin     bool      `json:"admin"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// MeResponse represents the response from /me endpoint
+type MeResponse struct {
+	User           User      `json:"user"`
+	CurrentAccount *Account  `json:"current_account"`
+	Accounts       []Account `json:"accounts"`
 }
 
 // CreateTunnelRequest is the request body for creating a tunnel
@@ -236,6 +254,17 @@ func (c *Client) do(method, path string, body interface{}, result interface{}) e
 	}
 
 	return nil
+}
+
+// GetMe returns information about the current user and their accounts
+func (c *Client) GetMe() (*MeResponse, error) {
+	var me MeResponse
+	// Don't include account_id for this request
+	originalAccountID := c.accountID
+	c.accountID = ""
+	err := c.do("GET", "/me", nil, &me)
+	c.accountID = originalAccountID
+	return &me, err
 }
 
 // ListAccounts returns all accounts for the authenticated user
