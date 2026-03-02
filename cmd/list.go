@@ -93,15 +93,8 @@ func runList(cmd *cobra.Command, args []string) error {
 			tunnelType = "persistent"
 		}
 
-		// Determine SSL status display
-		sslStatus := "-"
-		if t.Wildcard {
-			if t.SSLReady {
-				sslStatus = "✓"
-			} else {
-				sslStatus = "⏳"
-			}
-		}
+		// SSL is always ready - tunnels are covered by wildcard cert
+		sslStatus := "✓"
 
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			t.ID,

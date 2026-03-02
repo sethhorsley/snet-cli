@@ -17,9 +17,8 @@ var (
 	startPort       int
 	startHost       string
 	startSubdomain  string
-	startWildcard   bool
-	startNoWildcard bool
 	startPersistent bool
+	startWildcard   bool
 	startName       string
 	startProvider   string
 	// Header configuration flags
@@ -31,15 +30,20 @@ var (
 var startCmd = &cobra.Command{
 	Use:   "start [port]",
 	Short: "Start a new tunnel",
-	Long: `Create a new tunnel and start proxying traffic from seth4242.net to localhost.
+	Long: `Create a new tunnel and start proxying traffic from snet-public.com to localhost.
 
-Wildcard subdomains are ENABLED BY DEFAULT, allowing *.tunnel.account.seth4242.net
+Tunnels are covered by wildcard SSL certificate (*.snet-public.com).
+URL pattern: tunnel-slug--account-slug.snet-public.com
+
+With --wildcard flag (requires account wildcard enabled):
+  - All subdomains route to your tunnel: *.account.snet-public.com
+  - Example: api.account.snet-public.com, admin.account.snet-public.com
 
 Example:
-  snet start                              # tunnel with wildcards (default)
-  snet start 8080                         # tunnel to localhost:8080 with wildcards
-  snet start 3000 --no-wildcard           # disable wildcard subdomains
-  snet start 3000 --subdomain myapp       # request myapp.account.seth4242.net
+  snet start                              # tunnel to localhost:3000
+  snet start 8080                         # tunnel to localhost:8080
+  snet start 3000 --wildcard              # enable wildcard subdomain routing
+  snet start 3000 --subdomain myapp       # request myapp--account.snet-public.com
   snet start 3000 --host 192.168.1.100    # tunnel to remote host
   snet start --persistent --name my-proj  # persistent tunnel with name`,
 	Args: cobra.MaximumNArgs(1),
@@ -52,9 +56,8 @@ func init() {
 	startCmd.Flags().IntVarP(&startPort, "port", "p", 0, "Local port to tunnel to (default 3000)")
 	startCmd.Flags().StringVar(&startHost, "host", "localhost", "Host to tunnel to")
 	startCmd.Flags().StringVarP(&startSubdomain, "subdomain", "s", "", "Request a specific subdomain")
-	startCmd.Flags().BoolVarP(&startWildcard, "wildcard", "w", true, "Enable wildcard subdomains (default)")
-	startCmd.Flags().BoolVar(&startNoWildcard, "no-wildcard", false, "Disable wildcard subdomains")
 	startCmd.Flags().BoolVar(&startPersistent, "persistent", false, "Keep tunnel after disconnect")
+	startCmd.Flags().BoolVarP(&startWildcard, "wildcard", "w", false, "Enable wildcard subdomain routing (*.account.snet-public.com)")
 	startCmd.Flags().StringVarP(&startName, "name", "n", "", "Friendly name for the tunnel")
 	startCmd.Flags().StringVar(&startProvider, "provider", "", "Tunnel provider: frp or cloudflare (uses config default if not specified)")
 
@@ -116,16 +119,6 @@ func runStart(cmd *cobra.Command, args []string) error {
 		if err := tunnel.CheckCloudflared(); err != nil {
 			return err
 		}
-	}
-
-	// Determine wildcard setting
-	// Priority: --no-wildcard flag > --wildcard flag > config default > true
-	wildcard := cfg.WildcardDefault() // Use config default (defaults to true)
-	if cmd.Flags().Changed("wildcard") {
-		wildcard = startWildcard
-	}
-	if startNoWildcard {
-		wildcard = false
 	}
 
 	// Detect closest region for FRP tunnels
@@ -237,15 +230,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Create tunnel
 	if !Quiet {
 		fmt.Printf("Creating %s tunnel...\n", provider)
-		if wildcard {
-			fmt.Println("  → Provisioning wildcard support")
-		}
 		fmt.Println("  → Generating authentication credentials")
 		if provider == "frp" {
-			fmt.Println("  → Using account wildcard SSL certificate")
-			if wildcard {
-				fmt.Println("  → Wildcard SSL certificate will provision in background")
+			if startWildcard {
+				fmt.Println("  → Requesting wildcard subdomain routing")
 			}
+			fmt.Println("  → Using wildcard SSL certificate")
 		}
 	}
 
@@ -253,8 +243,8 @@ func runStart(cmd *cobra.Command, args []string) error {
 		Name:       tunnelName,
 		Subdomain:  startSubdomain,
 		Port:       port,
-		Wildcard:   wildcard,
 		Persistent: startPersistent,
+		Wildcard:   startWildcard,
 		Provider:   provider,
 		Region:     closestRegion,
 	})
@@ -267,7 +257,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		fmt.Println("")
 		fmt.Printf("Ready! Proxying %s:%d to:\n", startHost, port)
 		fmt.Printf("  %s\n", t.URL)
-		if t.WildcardURL != "" {
+		if t.WildcardEnabled && t.WildcardURL != "" {
 			fmt.Printf("  %s (wildcard)\n", t.WildcardURL)
 		}
 		fmt.Println("")

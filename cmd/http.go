@@ -22,6 +22,7 @@ var (
 	httpURL       string
 	httpInspect   bool
 	httpEphemeral bool
+	httpWildcard  bool
 	// Header configuration flags
 	httpRequestHeaders  []string
 	httpResponseHeaders []string
@@ -36,7 +37,8 @@ var httpCmd = &cobra.Command{
 Tunnels are persistent by default. Running this command again reconnects to
 the same public URL unless a different name is specified.
 
-Use --ephemeral for temporary tunnels that are deleted on disconnect.`,
+Use --ephemeral for temporary tunnels that are deleted on disconnect.
+Use --wildcard to enable wildcard subdomain routing (requires account flag).`,
 	Example: `  # forward traffic to localhost:8080
   snet http 8080
 
@@ -53,6 +55,9 @@ Use --ephemeral for temporary tunnels that are deleted on disconnect.`,
   snet http 3000 --ephemeral
   snet http 3000 --temp         # same as --ephemeral
   snet http 3000 --tmp          # same as --ephemeral
+
+  # wildcard subdomain routing (all *.account.snet-public.com -> localhost)
+  snet http 3000 --wildcard
 
   # choose endpoint URL
   snet http 3000 --url https://api.example.com
@@ -73,6 +78,7 @@ func init() {
 	httpCmd.Flags().BoolVar(&httpEphemeral, "ephemeral", false, "temporary tunnel (auto-cleanup on disconnect)")
 	httpCmd.Flags().BoolVar(&httpEphemeral, "temp", false, "temporary tunnel (alias for --ephemeral)")
 	httpCmd.Flags().BoolVar(&httpEphemeral, "tmp", false, "temporary tunnel (alias for --ephemeral)")
+	httpCmd.Flags().BoolVarP(&httpWildcard, "wildcard", "w", false, "enable wildcard subdomain routing (*.account.snet-public.com)")
 
 	// Header configuration flags
 	httpCmd.Flags().StringArrayVarP(&httpRequestHeaders, "header", "H", []string{}, "Add request header (format: name:value, can be repeated)")
@@ -169,9 +175,6 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 		t = existingTunnel
 		if !Quiet {
 			fmt.Printf("%s\n", t.URL)
-			if t.WildcardURL != "" {
-				fmt.Printf("%s (wildcard)\n", t.WildcardURL)
-			}
 			fmt.Printf("name: %s (reconnected)\n\n", tunnelName)
 		}
 
@@ -193,12 +196,10 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			provider = "frp"
 		}
 
-		wildcard := cfg.WildcardDefault()
-
 		if !Quiet {
 			fmt.Printf("Creating %s tunnel...\n", provider)
-			if wildcard {
-				fmt.Println("  → Provisioning wildcard support")
+			if httpWildcard {
+				fmt.Println("  → Requesting wildcard subdomain routing")
 			}
 			fmt.Println("  → Generating authentication credentials")
 		}
@@ -209,8 +210,8 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "\n[DEBUG] Creating tunnel with parameters:\n")
 			fmt.Fprintf(os.Stderr, "  Name:       %s\n", tunnelName)
 			fmt.Fprintf(os.Stderr, "  Port:       %d\n", port)
-			fmt.Fprintf(os.Stderr, "  Wildcard:   %v\n", wildcard)
 			fmt.Fprintf(os.Stderr, "  Persistent: %v\n", !httpEphemeral)
+			fmt.Fprintf(os.Stderr, "  Wildcard:   %v\n", httpWildcard)
 			fmt.Fprintf(os.Stderr, "  Provider:   %s\n", provider)
 			fmt.Fprintf(os.Stderr, "  API:        %s\n", GetAPIBase())
 			fmt.Fprintf(os.Stderr, "\n")
@@ -219,8 +220,8 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 		t, err = client.CreateTunnel(&api.CreateTunnelRequest{
 			Name:       tunnelName,
 			Port:       port,
-			Wildcard:   wildcard,
 			Persistent: !httpEphemeral,
+			Wildcard:   httpWildcard,
 			Provider:   provider,
 		})
 		if err != nil {
@@ -254,7 +255,7 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 		if !Quiet {
 			fmt.Println("✓ Tunnel created successfully!\n")
 			fmt.Printf("%s\n", t.URL)
-			if t.WildcardURL != "" {
+			if t.WildcardEnabled && t.WildcardURL != "" {
 				fmt.Printf("%s (wildcard)\n", t.WildcardURL)
 			}
 			fmt.Printf("name: %s\n\n", tunnelName)
@@ -313,12 +314,12 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			tuiWrapper := tui.NewTUIWrapper(
 				tunnelName,
 				t.URL,
-				t.WildcardURL,
+				t.WildcardURL, // Account-level wildcard URL if enabled
 				localURL,
 				accountName,
 				regionName,
 				buildinfo.Version,
-				t.Wildcard,
+				t.WildcardEnabled, // isWildcard
 				reconnecting,
 				latency,
 				headerSummary,
@@ -354,7 +355,7 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 
 					// Automatically recreate the tunnel with fresh credentials
 					newTunnel, recreateErr := recreateTunnelWithFreshCredentials(
-						client, t, port, t.Wildcard, t.Persistent,
+						client, t, port, t.Persistent,
 					)
 					if recreateErr != nil {
 						fmt.Printf("Failed to recreate tunnel: %v\n", recreateErr)
@@ -404,7 +405,7 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			if isTokenMismatchError(err) && reconnecting {
 				// Automatically recreate the tunnel with fresh credentials
 				newTunnel, recreateErr := recreateTunnelWithFreshCredentials(
-					client, t, port, t.Wildcard, t.Persistent,
+					client, t, port, t.Persistent,
 				)
 				if recreateErr != nil {
 					fmt.Fprintf(os.Stderr, "\nFailed to recreate tunnel: %v\n", recreateErr)
@@ -499,7 +500,7 @@ func isTokenMismatchError(err error) bool {
 }
 
 // recreateTunnelWithFreshCredentials deletes and recreates a tunnel to get fresh credentials
-func recreateTunnelWithFreshCredentials(client *api.Client, oldTunnel *api.Tunnel, port int, wildcard bool, persistent bool) (*api.Tunnel, error) {
+func recreateTunnelWithFreshCredentials(client *api.Client, oldTunnel *api.Tunnel, port int, persistent bool) (*api.Tunnel, error) {
 	fmt.Println("\n⚠️  Detected token mismatch - refreshing tunnel credentials...")
 
 	// Delete the old tunnel
@@ -516,7 +517,6 @@ func recreateTunnelWithFreshCredentials(client *api.Client, oldTunnel *api.Tunne
 	newTunnel, err := client.CreateTunnel(&api.CreateTunnelRequest{
 		Name:       oldTunnel.Name,
 		Port:       port,
-		Wildcard:   wildcard,
 		Persistent: persistent,
 		Provider:   oldTunnel.Provider,
 	})

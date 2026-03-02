@@ -19,6 +19,8 @@ type InspectorRequest struct {
 	Timestamp       time.Time           `json:"timestamp"`
 	Method          string              `json:"method"`
 	Path            string              `json:"path"`
+	Host            string              `json:"host"`
+	FullURL         string              `json:"full_url"`
 	StatusCode      int                 `json:"status_code"`
 	StatusText      string              `json:"status_text"`
 	Duration        time.Duration       `json:"duration"`
@@ -29,6 +31,8 @@ type InspectorRequest struct {
 	RemoteAddr      string              `json:"remote_addr"`
 	ContentType     string              `json:"content_type"`
 	ContentLength   int64               `json:"content_length"`
+	Error           string              `json:"error,omitempty"`
+	TargetURL       string              `json:"target_url,omitempty"`
 }
 
 // WebInspector provides a web interface for inspecting HTTP traffic
@@ -43,12 +47,11 @@ type WebInspector struct {
 
 // TunnelInfo contains information about the tunnel
 type TunnelInfo struct {
-	Status      string
-	MainURL     string
-	WildcardURL string
-	LocalURL    string
-	Region      string
-	Version     string
+	Status   string
+	MainURL  string
+	LocalURL string
+	Region   string
+	Version  string
 }
 
 // NewWebInspector creates a new web inspector

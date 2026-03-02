@@ -66,16 +66,64 @@ func (p *HTTPProxy) Start() error {
 			}
 		}
 
+		// Preserve original Host header from X-Forwarded-Host if present
+		// This makes snet behave like ngrok where the Host header matches the tunnel URL
+		if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+			proxyReq.Host = forwardedHost
+			proxyReq.Header.Set("Host", forwardedHost)
+		}
+
 		// Forward request
 		client := &http.Client{
 			Timeout: 30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// Don't follow redirects - let the client handle them
+				return http.ErrUseLastResponse
+			},
 		}
 		resp, err := client.Do(proxyReq)
 		if err != nil {
-			http.Error(w, "Failed to proxy request", http.StatusBadGateway)
 			duration := time.Since(startTime)
+			errorMsg := fmt.Sprintf("Failed to proxy request: %v", err)
+
+			// Return error response to client
+			http.Error(w, errorMsg, http.StatusBadGateway)
+
+			// Log to TUI
 			if p.tuiCallbacks != nil {
 				p.tuiCallbacks.LogHTTPRequest(r.Method, r.URL.Path, http.StatusBadGateway, duration, true)
+			}
+
+			// Log detailed error to web inspector
+			if p.webInspector != nil {
+				// Determine the host being used
+				host := proxyReq.Host
+				if host == "" {
+					host = r.Host
+				}
+
+				p.webInspector.AddRequest(InspectorRequest{
+					ID:             fmt.Sprintf("%d", time.Now().UnixNano()),
+					Timestamp:      startTime,
+					Method:         r.Method,
+					Path:           r.URL.Path,
+					Host:           host,
+					FullURL:        r.URL.String(),
+					StatusCode:     http.StatusBadGateway,
+					StatusText:     "Bad Gateway",
+					Duration:       duration,
+					RequestHeaders: r.Header,
+					ResponseHeaders: map[string][]string{
+						"Content-Type": {"text/plain; charset=utf-8"},
+					},
+					RequestBody:   requestBody.Bytes(),
+					ResponseBody:  []byte(errorMsg),
+					RemoteAddr:    r.RemoteAddr,
+					ContentType:   "text/plain; charset=utf-8",
+					ContentLength: int64(len(errorMsg)),
+					Error:         err.Error(),
+					TargetURL:     targetURL.String(),
+				})
 			}
 			return
 		}
@@ -107,11 +155,20 @@ func (p *HTTPProxy) Start() error {
 		// Log to web inspector
 		if p.webInspector != nil {
 			statusText := http.StatusText(resp.StatusCode)
+
+			// Determine the host being used
+			host := proxyReq.Host
+			if host == "" {
+				host = r.Host
+			}
+
 			p.webInspector.AddRequest(InspectorRequest{
 				ID:              fmt.Sprintf("%d", time.Now().UnixNano()),
 				Timestamp:       startTime,
 				Method:          r.Method,
 				Path:            r.URL.Path,
+				Host:            host,
+				FullURL:         r.URL.String(),
 				StatusCode:      resp.StatusCode,
 				StatusText:      statusText,
 				Duration:        duration,
@@ -122,6 +179,7 @@ func (p *HTTPProxy) Start() error {
 				RemoteAddr:      r.RemoteAddr,
 				ContentType:     resp.Header.Get("Content-Type"),
 				ContentLength:   resp.ContentLength,
+				TargetURL:       targetURL.String(),
 			})
 		}
 	})

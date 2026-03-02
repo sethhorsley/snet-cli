@@ -192,6 +192,40 @@
         .status-4xx { color: #faad14; }
         .status-5xx { color: #f5222d; }
         
+        .error-badge {
+            background: #fff2f0;
+            border: 1px solid #ffccc7;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            color: #a8071a;
+            font-size: 13px;
+        }
+        
+        .error-badge strong {
+            color: #cf1322;
+        }
+        
+        .target-info {
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            color: #389e0d;
+            font-size: 13px;
+        }
+        
+        .host-info {
+            background: #e6f7ff;
+            border: 1px solid #91d5ff;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            color: #096dd9;
+            font-size: 13px;
+        }
+        
         .detail-panel {
             background: #fff;
             border-radius: 4px;
@@ -363,6 +397,9 @@
                             <span id="detail-time"></span>
                         </div>
                     </div>
+                    <div id="error-info" class="error-badge" style="display: none; margin: 12px 16px 0 16px;"></div>
+                    <div id="host-info" class="host-info" style="display: none; margin: 12px 16px 0 16px;"></div>
+                    <div id="target-info" class="target-info" style="display: none; margin: 12px 16px 0 16px;"></div>
                     <div class="tabs">
                         <div class="tab active" data-tab="request-headers">Request Headers</div>
                         <div class="tab" data-tab="response-headers">Response Headers</div>
@@ -416,17 +453,20 @@
                 const duration = req.duration < 1000000 ? `${Math.round(req.duration/1000)}µs` :
                                 req.duration < 1000000000 ? `${Math.round(req.duration/1000000)}ms` :
                                 `${(req.duration/1000000000).toFixed(2)}s`;
+                const hasError = req.error ? '⚠️ ' : '';
+                const errorStyle = req.error ? 'background: #fff2f0;' : '';
                 
                 return `
-                    <div class="request-item ${selected}" data-id="${req.id}" onclick="selectRequest('${req.id}')">
+                    <div class="request-item ${selected}" data-id="${req.id}" onclick="selectRequest('${req.id}')" style="${errorStyle}">
                         <div class="request-header">
                             <span class="request-method method-${req.method}">${req.method}</span>
-                            <span class="request-path" title="${escapeHtml(req.path)}">${escapeHtml(req.path)}</span>
+                            <span class="request-path" title="${escapeHtml(req.path)}">${hasError}${escapeHtml(req.path)}</span>
                         </div>
                         <div class="request-status">
                             <span class="status-code ${statusClass}">${req.status_code} ${req.status_text}</span>
                             <span>${duration}</span>
                         </div>
+                        ${req.host ? `<div class="timestamp">Host: ${escapeHtml(req.host)}</div>` : ''}
                         <div class="timestamp">${new Date(req.timestamp).toLocaleTimeString()}</div>
                     </div>
                 `;
@@ -452,6 +492,33 @@
             document.getElementById('detail-status').innerHTML = `<span class="${statusClass}">${req.status_code} ${req.status_text}</span>`;
             document.getElementById('detail-duration').textContent = `Duration: ${duration}`;
             document.getElementById('detail-time').textContent = new Date(req.timestamp).toLocaleString();
+            
+            // Show/hide error info
+            const errorInfo = document.getElementById('error-info');
+            if (req.error) {
+                errorInfo.innerHTML = `<strong>Error:</strong> ${escapeHtml(req.error)}`;
+                errorInfo.style.display = 'block';
+            } else {
+                errorInfo.style.display = 'none';
+            }
+            
+            // Show/hide host info
+            const hostInfo = document.getElementById('host-info');
+            if (req.host) {
+                hostInfo.innerHTML = `<strong>Host:</strong> ${escapeHtml(req.host)}`;
+                hostInfo.style.display = 'block';
+            } else {
+                hostInfo.style.display = 'none';
+            }
+            
+            // Show/hide target URL info
+            const targetInfo = document.getElementById('target-info');
+            if (req.target_url) {
+                targetInfo.innerHTML = `<strong>Forwarding to:</strong> ${escapeHtml(req.target_url)}`;
+                targetInfo.style.display = 'block';
+            } else {
+                targetInfo.style.display = 'none';
+            }
             
             showTab('request-headers');
         }

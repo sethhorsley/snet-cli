@@ -131,9 +131,6 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		fmt.Println("")
 		fmt.Printf("Ready! Proxying %s:%d to:\n", connectHost, port)
 		fmt.Printf("  %s\n", t.URL)
-		if t.WildcardURL != "" {
-			fmt.Printf("  %s (wildcard)\n", t.WildcardURL)
-		}
 		fmt.Println("")
 		fmt.Println("Press Ctrl+C to stop the tunnel.")
 		fmt.Println("")

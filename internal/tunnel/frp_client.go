@@ -38,15 +38,40 @@ func NewEmbeddedFRPClient(tunnel *api.Tunnel, port int, host string, suppressLog
 	}
 
 	// Create HTTP proxy configuration
-	// Use customDomains to specify full domain name: {slug}.{account}.seth4242.net
+	// Use customDomains to specify full domain names
 	// FRP server has no subDomainHost configured, allowing customDomains to work
-	customDomains := []string{
-		fmt.Sprintf("%s.%s.seth4242.net", tunnel.Slug, tunnel.Account.Slug),
+	//
+	// URL patterns:
+	// - Without wildcard: tunnel-slug--account-slug.snet-public.com
+	// - With wildcard: tunnel-slug.account-slug.snet-public.com + *.account-slug.snet-public.com
+	//
+	// The tunnel URL from the API already contains the correct format, so extract
+	// the hostname from it (strip https:// prefix if present)
+	tunnelHostname := tunnel.URL
+	if len(tunnelHostname) > 8 && tunnelHostname[:8] == "https://" {
+		tunnelHostname = tunnelHostname[8:]
+	}
+	if len(tunnelHostname) > 7 && tunnelHostname[:7] == "http://" {
+		tunnelHostname = tunnelHostname[7:]
 	}
 
-	// Add wildcard domain if enabled
-	if tunnel.Wildcard {
-		customDomains = append(customDomains, fmt.Sprintf("*.%s.%s.seth4242.net", tunnel.Slug, tunnel.Account.Slug))
+	var customDomains []string
+
+	// If wildcard is enabled, ONLY register the wildcard domain
+	// The specific tunnel domain (e.g., snet-cli.seth.snet-public.com) is already covered
+	// by the wildcard (*.seth.snet-public.com), so registering both causes a "router config conflict"
+	if tunnel.WildcardEnabled && tunnel.WildcardURL != "" {
+		wildcardHostname := tunnel.WildcardURL
+		if len(wildcardHostname) > 8 && wildcardHostname[:8] == "https://" {
+			wildcardHostname = wildcardHostname[8:]
+		}
+		if len(wildcardHostname) > 7 && wildcardHostname[:7] == "http://" {
+			wildcardHostname = wildcardHostname[7:]
+		}
+		customDomains = []string{wildcardHostname}
+	} else {
+		// No wildcard - just register the specific tunnel domain
+		customDomains = []string{tunnelHostname}
 	}
 
 	httpProxy := &v1.HTTPProxyConfig{
@@ -61,7 +86,15 @@ func NewEmbeddedFRPClient(tunnel *api.Tunnel, port int, host string, suppressLog
 		DomainConfig: v1.DomainConfig{
 			CustomDomains: customDomains,
 		},
-		// Transparent mode by default - no header manipulation
+		// Set X-Forwarded-Proto to https since all snet tunnels use HTTPS.
+		// FRP sets X-Forwarded-Host with the original Host header value.
+		// The local HTTP proxy in snet-cli will rewrite Host from X-Forwarded-Host
+		// to make it transparent like ngrok.
+		RequestHeaders: v1.HeaderOperations{
+			Set: map[string]string{
+				"X-Forwarded-Proto": "https",
+			},
+		},
 	}
 
 	// Apply custom header configuration if provided

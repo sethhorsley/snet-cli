@@ -70,19 +70,20 @@ func (r *FRPRunner) SetRegionAndVersion(region, version string) {
 
 // Run starts the FRP tunnel and blocks until it exits
 func (r *FRPRunner) Run() error {
-	// If TUI is enabled, start HTTP proxy and web inspector to intercept requests
+	// Always start HTTP proxy to handle header rewriting (X-Forwarded-Host -> Host)
+	// This makes snet behave like ngrok where the Host header matches the tunnel URL
 	actualPort := r.port
 	actualHost := r.host
+
+	// Start web inspector only in TUI mode
 	if r.tuiCallbacks != nil {
-		// Start web inspector
 		webInspectorPort := 4040 // Default ngrok inspect port
 		tunnelInfo := TunnelInfo{
-			Status:      "online",
-			MainURL:     r.tunnel.URL,
-			WildcardURL: r.tunnel.WildcardURL,
-			LocalURL:    fmt.Sprintf("http://%s:%d", r.host, r.port),
-			Region:      r.region,
-			Version:     r.version,
+			Status:   "online",
+			MainURL:  r.tunnel.URL,
+			LocalURL: fmt.Sprintf("http://%s:%d", r.host, r.port),
+			Region:   r.region,
+			Version:  r.version,
 		}
 		r.webInspector = NewWebInspector(webInspectorPort, 100, tunnelInfo)
 		if err := r.webInspector.Start(); err != nil {
@@ -90,17 +91,18 @@ func (r *FRPRunner) Run() error {
 		} else {
 			fmt.Printf("\nWeb Interface: http://127.0.0.1:%d\n", webInspectorPort)
 		}
-
-		// Find an available port for the proxy
-		proxyPort := r.port + 10000 // Use high port to avoid conflicts
-		r.httpProxy = NewHTTPProxy(r.host, r.port, proxyPort, r.tuiCallbacks, r.webInspector)
-		if err := r.httpProxy.Start(); err != nil {
-			return fmt.Errorf("failed to start HTTP proxy: %w", err)
-		}
-		// Point FRP to the proxy instead of the application
-		actualPort = proxyPort
-		actualHost = "127.0.0.1"
 	}
+
+	// Always start HTTP proxy to rewrite Host header from X-Forwarded-Host
+	// This ensures the app receives the correct Host header matching the tunnel URL
+	proxyPort := r.port + 10000 // Use high port to avoid conflicts
+	r.httpProxy = NewHTTPProxy(r.host, r.port, proxyPort, r.tuiCallbacks, r.webInspector)
+	if err := r.httpProxy.Start(); err != nil {
+		return fmt.Errorf("failed to start HTTP proxy: %w", err)
+	}
+	// Point FRP to the proxy instead of the application
+	actualPort = proxyPort
+	actualHost = "127.0.0.1"
 
 	// Create embedded FRP client (suppress logs if TUI mode is enabled)
 	suppressLog := r.tuiCallbacks != nil
@@ -279,51 +281,12 @@ func (r *FRPRunner) heartbeatLoop() {
 	}
 }
 
-// showTunnelStatus displays tunnel URLs with SSL validation status
+// showTunnelStatus displays tunnel URL with SSL coverage info
 func (r *FRPRunner) showTunnelStatus() {
-	// Main URL is always ready immediately (DNS points to FRP server)
-	fmt.Printf("✓ Main URL:     %s\n", r.tunnel.URL)
-
-	// If wildcard enabled, check SSL status
-	if r.tunnel.Wildcard && r.tunnel.WildcardURL != "" {
-		// Check SSL status
-		status, err := r.client.SSLStatus(r.tunnel.ID)
-		if err != nil {
-			fmt.Printf("  Wildcard URL: %s (checking SSL...)\n", r.tunnel.WildcardURL)
-		} else if status.WildcardReady {
-			fmt.Printf("✓ Wildcard URL: %s\n", r.tunnel.WildcardURL)
-		} else {
-			fmt.Printf("⏳ Wildcard URL: %s (waiting for SSL validation...)\n", r.tunnel.WildcardURL)
-			// Start background SSL status checker
-			r.wg.Add(1)
-			go r.pollSSLStatus()
-		}
-	}
-}
-
-// pollSSLStatus polls for SSL validation in the background
-func (r *FRPRunner) pollSSLStatus() {
-	defer r.wg.Done()
-
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			status, err := r.client.SSLStatus(r.tunnel.ID)
-			if err != nil {
-				// Silently continue polling
-				continue
-			}
-
-			if status.WildcardReady {
-				fmt.Printf("\n✓ Wildcard SSL validated! %s is now ready\n", r.tunnel.WildcardURL)
-				return
-			}
-		case <-r.ctx.Done():
-			return
-		}
+	// Tunnel is always ready - covered by wildcard certificate
+	fmt.Printf("✓ URL: %s\n", r.tunnel.URL)
+	if r.tunnel.CoveredBy != "" {
+		fmt.Printf("  (covered by %s)\n", r.tunnel.CoveredBy)
 	}
 }
 
