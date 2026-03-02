@@ -57,23 +57,22 @@ Try these steps:
 `
 	}
 
-	if containsAny(errMsg, "login to the server failed") {
+	if containsAny(errMsg, "login to the server failed", "token in login doesn't match") {
 		return fmt.Sprintf(`Authentication Error
 
-Authentication with the FRP server failed.
+Authentication with the FRP server failed due to a token mismatch.
 
 Details: %s
 
-This could mean:
-  • Your API token has expired or is invalid
-  • The tunnel credentials are out of sync
-  • The tunnel has been deleted
+This usually means the tunnel credentials are out of sync with the server.
 
 Try these steps:
-  1. Re-authenticate: snet login
-  2. Create a new tunnel: snet http 3000 --name new-tunnel
-  3. Check your account status online
-  4. Contact support if the issue persists
+  1. Delete the existing tunnel: snet delete <tunnel-name>
+  2. Create a new tunnel with fresh credentials: snet http 3000
+  3. If the issue persists, contact support
+
+Note: This is a known issue that occurs when the FRP server is restarted or 
+reconfigured. Deleting and recreating the tunnel will generate fresh credentials.
 `, errMsg)
 	}
 

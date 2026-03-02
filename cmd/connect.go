@@ -36,7 +36,13 @@ tunnel ID (e.g., "tun_abc123").`,
 
   # specify port
   snet connect api 8080`,
-	Args: cobra.MinimumNArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		// Allow zero args if --tunnel flag is provided (deprecated)
+		if len(args) == 0 && connectTunnelID == "" {
+			return fmt.Errorf("requires at least 1 arg(s), only received 0")
+		}
+		return nil
+	},
 	RunE: runConnect,
 }
 

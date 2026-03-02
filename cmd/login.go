@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/seth4242/snet/internal/api"
@@ -82,13 +81,17 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Print("Enter number: ")
 
+		// Read the selection using the same reader to avoid buffering issues
 		selectionStr, err := reader.ReadString('\n')
 		if err != nil {
 			return fmt.Errorf("failed to read selection: %w", err)
 		}
-		selection, err := strconv.Atoi(strings.TrimSpace(selectionStr))
+		selectionStr = strings.TrimSpace(selectionStr)
+
+		var selection int
+		_, err = fmt.Sscanf(selectionStr, "%d", &selection)
 		if err != nil || selection < 1 || selection > len(accounts) {
-			return fmt.Errorf("invalid selection")
+			return fmt.Errorf("invalid selection: please enter a number between 1 and %d", len(accounts))
 		}
 		selectedAccount = accounts[selection-1]
 	}

@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/seth4242/snet/internal/api"
@@ -215,6 +217,23 @@ func runStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Determine tunnel name - use current directory name if not specified
+	tunnelName := startName
+	if tunnelName == "" {
+		cwd, err := os.Getwd()
+		if err == nil {
+			tunnelName = filepath.Base(cwd)
+		}
+		// If we still don't have a name, use a generic one
+		if tunnelName == "" || tunnelName == "." || tunnelName == "/" {
+			tunnelName = "dev"
+		}
+	}
+
+	if Verbose {
+		fmt.Printf("[DEBUG] Tunnel name: %q\n", tunnelName)
+	}
+
 	// Create tunnel
 	if !Quiet {
 		fmt.Printf("Creating %s tunnel...\n", provider)
@@ -231,7 +250,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	t, err := client.CreateTunnel(&api.CreateTunnelRequest{
-		Name:       startName,
+		Name:       tunnelName,
 		Subdomain:  startSubdomain,
 		Port:       port,
 		Wildcard:   wildcard,

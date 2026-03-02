@@ -59,8 +59,9 @@ Use --ephemeral for temporary tunnels that are deleted on disconnect.`,
 
   # custom headers for multi-tenant apps
   snet http 3000 --host-header tenant1.example.com -H "X-Forwarded-Host:tenant1.example.com"`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runHTTP,
+	Args:         cobra.MaximumNArgs(1),
+	RunE:         runHTTP,
+	SilenceUsage: true, // Don't show usage/help on errors
 }
 
 func init() {
@@ -173,6 +174,18 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Printf("name: %s (reconnected)\n\n", tunnelName)
 		}
+
+		if Verbose {
+			fmt.Fprintf(os.Stderr, "\n[DEBUG] Reconnecting to existing tunnel:\n")
+			fmt.Fprintf(os.Stderr, "  ID:              %s\n", t.ID)
+			fmt.Fprintf(os.Stderr, "  Name:            %s\n", t.Name)
+			fmt.Fprintf(os.Stderr, "  URL:             %s\n", t.URL)
+			fmt.Fprintf(os.Stderr, "  Provider:        %s\n", t.Provider)
+			fmt.Fprintf(os.Stderr, "  FRP Server:      %s:%d\n", t.FRPServerAddr, t.FRPServerPort)
+			fmt.Fprintf(os.Stderr, "  FRP Proxy Name:  %s\n", t.FRPProxyName)
+			fmt.Fprintf(os.Stderr, "  FRP Auth Token:  %s...\n", maskToken(t.FRPAuthToken))
+			fmt.Fprintf(os.Stderr, "\n")
+		}
 	} else {
 		// Create new tunnel
 		provider := cfg.DefaultProvider
@@ -191,6 +204,18 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 		}
 
 		createStart := time.Now()
+
+		if Verbose {
+			fmt.Fprintf(os.Stderr, "\n[DEBUG] Creating tunnel with parameters:\n")
+			fmt.Fprintf(os.Stderr, "  Name:       %s\n", tunnelName)
+			fmt.Fprintf(os.Stderr, "  Port:       %d\n", port)
+			fmt.Fprintf(os.Stderr, "  Wildcard:   %v\n", wildcard)
+			fmt.Fprintf(os.Stderr, "  Persistent: %v\n", !httpEphemeral)
+			fmt.Fprintf(os.Stderr, "  Provider:   %s\n", provider)
+			fmt.Fprintf(os.Stderr, "  API:        %s\n", GetAPIBase())
+			fmt.Fprintf(os.Stderr, "\n")
+		}
+
 		t, err = client.CreateTunnel(&api.CreateTunnelRequest{
 			Name:       tunnelName,
 			Port:       port,
@@ -199,6 +224,27 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			Provider:   provider,
 		})
 		if err != nil {
+			if Verbose {
+				fmt.Fprintf(os.Stderr, "\n[DEBUG] Tunnel creation failed:\n")
+				fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "\n")
+				fmt.Fprintf(os.Stderr, "[EXPLANATION]\n")
+				fmt.Fprintf(os.Stderr, "This error occurs on the Rails API server during tunnel provisioning.\n")
+				fmt.Fprintf(os.Stderr, "\n")
+				fmt.Fprintf(os.Stderr, "The Rails server follows these steps:\n")
+				fmt.Fprintf(os.Stderr, "  1. Generate FRP authentication token (from Rails credentials)\n")
+				fmt.Fprintf(os.Stderr, "  2. Create DNS records in Cloudflare (*.%s.%s.snet-public.com)\n", tunnelName, "ACCOUNT")
+				fmt.Fprintf(os.Stderr, "  3. Request SSL certificates from Fly.io\n")
+				fmt.Fprintf(os.Stderr, "\n")
+				fmt.Fprintf(os.Stderr, "The 'Authentication error' indicates step 2 failed.\n")
+				fmt.Fprintf(os.Stderr, "This means the Cloudflare API token in Rails credentials is invalid/expired.\n")
+				fmt.Fprintf(os.Stderr, "\n")
+				fmt.Fprintf(os.Stderr, "To fix this:\n")
+				fmt.Fprintf(os.Stderr, "  1. Generate a new Cloudflare API token with Zone.DNS (Edit) permissions\n")
+				fmt.Fprintf(os.Stderr, "  2. Update Rails credentials: bin/rails credentials:edit\n")
+				fmt.Fprintf(os.Stderr, "  3. Update the cloudflare.api_token value\n")
+				fmt.Fprintf(os.Stderr, "\n")
+			}
 			return fmt.Errorf("failed to create tunnel: %w", err)
 		}
 		if buildinfo.IsDevelopment() {
@@ -300,6 +346,38 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 			time.Sleep(100 * time.Millisecond)
 
 			if err != nil {
+				// Check if this is a token mismatch error and we're reconnecting
+				if isTokenMismatchError(err) && reconnecting {
+					// Force terminal to a completely clean state
+					fmt.Print("\033[2K\r")
+					fmt.Println()
+
+					// Automatically recreate the tunnel with fresh credentials
+					newTunnel, recreateErr := recreateTunnelWithFreshCredentials(
+						client, t, port, t.Wildcard, t.Persistent,
+					)
+					if recreateErr != nil {
+						fmt.Printf("Failed to recreate tunnel: %v\n", recreateErr)
+						fmt.Println(errorhandler.FormatConnectionError(err))
+						return nil
+					}
+
+					// Update tunnel reference and restart without TUI (to avoid complexity)
+					t = newTunnel
+					fmt.Println("Restarting tunnel with fresh credentials...")
+					fmt.Println("Press Ctrl+C to disconnect.\n")
+
+					runner = tunnel.NewFRPRunner(client, t, port, host, headerConfig)
+					runner.SetRegionAndVersion("iad", buildinfo.Version)
+
+					err = runner.Run()
+					if err != nil {
+						fmt.Println()
+						fmt.Println(errorhandler.FormatConnectionError(err))
+					}
+					return nil
+				}
+
 				// Force terminal to a completely clean state
 				// Clear the line and move cursor to start
 				fmt.Print("\033[2K\r")
@@ -322,6 +400,32 @@ func runHTTP(cmd *cobra.Command, args []string) error {
 
 		err := runner.Run()
 		if err != nil {
+			// Check if this is a token mismatch error and we're reconnecting
+			if isTokenMismatchError(err) && reconnecting {
+				// Automatically recreate the tunnel with fresh credentials
+				newTunnel, recreateErr := recreateTunnelWithFreshCredentials(
+					client, t, port, t.Wildcard, t.Persistent,
+				)
+				if recreateErr != nil {
+					fmt.Fprintf(os.Stderr, "\nFailed to recreate tunnel: %v\n", recreateErr)
+					return err // Return original error
+				}
+
+				// Try again with the new tunnel
+				t = newTunnel
+				fmt.Println("Press Ctrl+C to disconnect.\n")
+				runner = tunnel.NewFRPRunner(client, t, port, host, headerConfig)
+				runner.SetRegionAndVersion("iad", buildinfo.Version)
+
+				err = runner.Run()
+				if err != nil {
+					fmt.Fprint(os.Stderr, "\n")
+					fmt.Fprintln(os.Stderr, errorhandler.FormatConnectionError(err))
+					return err
+				}
+				return nil
+			}
+
 			// Ensure we're on a clean line
 			fmt.Fprint(os.Stderr, "\n")
 			// Format FRP connection errors nicely
@@ -362,6 +466,14 @@ func findTunnelByName(client *api.Client, name string) (*api.Tunnel, bool) {
 	return nil, false
 }
 
+// maskToken masks a token for display, showing only first/last 4 chars
+func maskToken(token string) string {
+	if len(token) <= 8 {
+		return "****"
+	}
+	return token[:4] + "..." + token[len(token)-4:]
+}
+
 // sanitizeTunnelName converts a name to lowercase alphanumeric with hyphens
 func sanitizeTunnelName(name string) string {
 	// Replace underscores with hyphens
@@ -374,4 +486,48 @@ func sanitizeTunnelName(name string) string {
 		}
 	}
 	return strings.ToLower(result.String())
+}
+
+// isTokenMismatchError checks if an error is caused by FRP token mismatch
+func isTokenMismatchError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "token in login doesn't match") ||
+		strings.Contains(errMsg, "token mismatch")
+}
+
+// recreateTunnelWithFreshCredentials deletes and recreates a tunnel to get fresh credentials
+func recreateTunnelWithFreshCredentials(client *api.Client, oldTunnel *api.Tunnel, port int, wildcard bool, persistent bool) (*api.Tunnel, error) {
+	fmt.Println("\n⚠️  Detected token mismatch - refreshing tunnel credentials...")
+
+	// Delete the old tunnel
+	fmt.Printf("   → Deleting tunnel '%s'...\n", oldTunnel.Name)
+	if err := client.DeleteTunnel(oldTunnel.ID); err != nil {
+		return nil, fmt.Errorf("failed to delete tunnel: %w", err)
+	}
+
+	// Wait a moment for cleanup
+	time.Sleep(500 * time.Millisecond)
+
+	// Create a new tunnel with the same name
+	fmt.Printf("   → Creating new tunnel with fresh credentials...\n")
+	newTunnel, err := client.CreateTunnel(&api.CreateTunnelRequest{
+		Name:       oldTunnel.Name,
+		Port:       port,
+		Wildcard:   wildcard,
+		Persistent: persistent,
+		Provider:   oldTunnel.Provider,
+	})
+	if err != nil {
+		// Check if this is a server-side authentication issue
+		if strings.Contains(err.Error(), "Authentication error") {
+			return nil, fmt.Errorf("failed to create tunnel: %w\n\nThis appears to be a server-side issue. The FRP server authentication is not configured correctly.\nPlease contact the system administrator to check the FRP server configuration.", err)
+		}
+		return nil, fmt.Errorf("failed to create tunnel: %w", err)
+	}
+
+	fmt.Println("✓ Tunnel recreated with fresh credentials!\n")
+	return newTunnel, nil
 }

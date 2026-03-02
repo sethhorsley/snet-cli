@@ -41,6 +41,10 @@ QUICK START:
 DESCRIPTION:
   snet creates persistent tunnels. Re-running the same command reconnects
   to the same public URL unless the name is changed.`,
+	// Disable automatic usage/help and error display
+	// We handle error display in Execute() to avoid duplication
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 // Execute runs the root command
