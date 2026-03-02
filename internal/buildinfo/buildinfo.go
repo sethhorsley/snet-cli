@@ -18,7 +18,7 @@ const (
 	ModeProduction  = "production"
 
 	DevAPIBase  = "http://localhost:3001/api/v1"
-	ProdAPIBase = "https://seth4242.net/api/v1"
+	ProdAPIBase = "https://snet.dev/api/v1"
 )
 
 // GetAPIBase returns the API base URL, using the appropriate default if not set
