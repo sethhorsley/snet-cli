@@ -207,43 +207,50 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           VERSION_NO_V="${VERSION#v}"
-          cat > tap/Formula/snet.rb <<FORMULA
-          class Snet < Formula
-            desc "Secure HTTPS tunnels from localhost to public URLs"
-            homepage "https://github.com/sethhorsley/snet-cli"
-            version "${VERSION_NO_V}"
-            license "MIT"
+          cat > tap/Formula/snet.rb <<'FORMULA'
+class Snet < Formula
+  desc "Secure HTTPS tunnels from localhost to public URLs"
+  homepage "https://github.com/sethhorsley/snet-cli"
+  version "VERSION_NO_V"
+  license "MIT"
 
-            on_macos do
-              if Hardware::CPU.arm?
-                url "https://github.com/sethhorsley/snet-cli/releases/download/${VERSION}/snet-darwin-arm64.tar.gz"
-                sha256 "${{ steps.sha.outputs.darwin_arm64 }}"
-              else
-                url "https://github.com/sethhorsley/snet-cli/releases/download/${VERSION}/snet-darwin-amd64.tar.gz"
-                sha256 "${{ steps.sha.outputs.darwin_amd64 }}"
-              end
-            end
+  on_macos do
+    if Hardware::CPU.arm?
+      url "https://github.com/sethhorsley/snet-cli/releases/download/VERSION/snet-darwin-arm64.tar.gz"
+      sha256 "SHA_DARWIN_ARM64"
+    else
+      url "https://github.com/sethhorsley/snet-cli/releases/download/VERSION/snet-darwin-amd64.tar.gz"
+      sha256 "SHA_DARWIN_AMD64"
+    end
+  end
 
-            on_linux do
-              if Hardware::CPU.arm?
-                url "https://github.com/sethhorsley/snet-cli/releases/download/${VERSION}/snet-linux-arm64.tar.gz"
-                sha256 "${{ steps.sha.outputs.linux_arm64 }}"
-              else
-                url "https://github.com/sethhorsley/snet-cli/releases/download/${VERSION}/snet-linux-amd64.tar.gz"
-                sha256 "${{ steps.sha.outputs.linux_amd64 }}"
-              end
-            end
+  on_linux do
+    if Hardware::CPU.arm?
+      url "https://github.com/sethhorsley/snet-cli/releases/download/VERSION/snet-linux-arm64.tar.gz"
+      sha256 "SHA_LINUX_ARM64"
+    else
+      url "https://github.com/sethhorsley/snet-cli/releases/download/VERSION/snet-linux-amd64.tar.gz"
+      sha256 "SHA_LINUX_AMD64"
+    end
+  end
 
-            def install
-              bin.install "snet"
-            end
+  def install
+    bin.install "snet"
+  end
 
-            test do
-              assert_match version.to_s, shell_output("#{bin}/snet version")
-            end
-          end
-          FORMULA
-          sed -i 's/^          //' tap/Formula/snet.rb
+  test do
+    assert_match version.to_s, shell_output("#{bin}/snet version")
+  end
+end
+FORMULA
+          
+          # Replace placeholders with actual values
+          sed -i "s/VERSION_NO_V/${VERSION_NO_V}/g" tap/Formula/snet.rb
+          sed -i "s|VERSION|${VERSION}|g" tap/Formula/snet.rb
+          sed -i "s/SHA_DARWIN_ARM64/${{ steps.sha.outputs.darwin_arm64 }}/g" tap/Formula/snet.rb
+          sed -i "s/SHA_DARWIN_AMD64/${{ steps.sha.outputs.darwin_amd64 }}/g" tap/Formula/snet.rb
+          sed -i "s/SHA_LINUX_ARM64/${{ steps.sha.outputs.linux_arm64 }}/g" tap/Formula/snet.rb
+          sed -i "s/SHA_LINUX_AMD64/${{ steps.sha.outputs.linux_amd64 }}/g" tap/Formula/snet.rb
 
       - name: Push formula to tap
         run: |
