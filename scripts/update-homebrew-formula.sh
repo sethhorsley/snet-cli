@@ -13,7 +13,8 @@ fi
 
 VERSION="$1"
 VERSION_NO_V="${VERSION#v}"  # Remove 'v' prefix
-FORMULA_FILE="homebrew/snet.rb"
+TAP_DIR="${2:-/Users/send16/files/sethhorsley/homebrew-tap}"
+FORMULA_FILE="$TAP_DIR/Formula/snet.rb"
 REPO="sethhorsley/snet-cli"
 
 echo "Updating Homebrew formula for version $VERSION..."
@@ -47,67 +48,49 @@ echo "Linux AMD64 SHA256:  $LINUX_AMD64_SHA"
 # Update formula file
 echo "Updating $FORMULA_FILE..."
 
-# Backup original file
-cp "$FORMULA_FILE" "$FORMULA_FILE.bak"
+# Write the formula
+cat > "$FORMULA_FILE" <<EOF
+class Snet < Formula
+  desc "Secure HTTPS tunnels from localhost to public URLs"
+  homepage "https://github.com/sethhorsley/snet-cli"
+  version "$VERSION_NO_V"
+  license "MIT"
 
-# Update version and SHA256 values
-sed -i.tmp "s/version \".*\"/version \"$VERSION_NO_V\"/" "$FORMULA_FILE"
-sed -i.tmp "s|releases/download/v[^/]*/|releases/download/$VERSION/|g" "$FORMULA_FILE"
+  on_macos do
+    if Hardware::CPU.arm?
+      url "https://github.com/sethhorsley/snet-cli/releases/download/$VERSION/snet-darwin-arm64.tar.gz"
+      sha256 "$DARWIN_ARM64_SHA"
+    else
+      url "https://github.com/sethhorsley/snet-cli/releases/download/$VERSION/snet-darwin-amd64.tar.gz"
+      sha256 "$DARWIN_AMD64_SHA"
+    end
+  end
 
-# Update SHA256 values for each platform
-sed -i.tmp "/if Hardware::CPU.arm?/,/sha256/ { s/sha256 \".*\"/sha256 \"$DARWIN_ARM64_SHA\"/; }" "$FORMULA_FILE"
-sed -i.tmp "/else.*# Darwin AMD64/,/sha256/ { s/sha256 \".*\"/sha256 \"$DARWIN_AMD64_SHA\"/; }" "$FORMULA_FILE"
+  on_linux do
+    if Hardware::CPU.arm?
+      url "https://github.com/sethhorsley/snet-cli/releases/download/$VERSION/snet-linux-arm64.tar.gz"
+      sha256 "$LINUX_ARM64_SHA"
+    else
+      url "https://github.com/sethhorsley/snet-cli/releases/download/$VERSION/snet-linux-amd64.tar.gz"
+      sha256 "$LINUX_AMD64_SHA"
+    end
+  end
 
-# Use a more precise approach with line-by-line processing
-cat "$FORMULA_FILE.bak" | awk -v v="$VERSION_NO_V" \
-    -v darwin_arm64="$DARWIN_ARM64_SHA" \
-    -v darwin_amd64="$DARWIN_AMD64_SHA" \
-    -v linux_arm64="$LINUX_ARM64_SHA" \
-    -v linux_amd64="$LINUX_AMD64_SHA" \
-    -v version="$VERSION" '
-BEGIN { platform=""; }
-/^  version / { print "  version \"" v "\""; next; }
-/on_macos/ { platform="macos"; }
-/on_linux/ { platform="linux"; }
-/if Hardware::CPU.arm\?/ { is_arm=1; }
-/else/ { is_arm=0; }
-/releases\/download/ {
-    if (platform == "macos" && is_arm) {
-        print "      url \"https://github.com/sethhorsley/snet-cli/releases/download/" version "/snet-darwin-arm64.tar.gz\"";
-    } else if (platform == "macos" && !is_arm) {
-        print "      url \"https://github.com/sethhorsley/snet-cli/releases/download/" version "/snet-darwin-amd64.tar.gz\"";
-    } else if (platform == "linux" && is_arm) {
-        print "      url \"https://github.com/sethhorsley/snet-cli/releases/download/" version "/snet-linux-arm64.tar.gz\"";
-    } else if (platform == "linux" && !is_arm) {
-        print "      url \"https://github.com/sethhorsley/snet-cli/releases/download/" version "/snet-linux-amd64.tar.gz\"";
-    }
-    next;
-}
-/sha256 "REPLACE_WITH_ARM64_SHA256"/ && platform == "macos" {
-    print "      sha256 \"" darwin_arm64 "\"";
-    next;
-}
-/sha256 "REPLACE_WITH_AMD64_SHA256"/ && platform == "macos" {
-    print "      sha256 \"" darwin_amd64 "\"";
-    next;
-}
-/sha256 "REPLACE_WITH_LINUX_ARM64_SHA256"/ {
-    print "      sha256 \"" linux_arm64 "\"";
-    next;
-}
-/sha256 "REPLACE_WITH_LINUX_AMD64_SHA256"/ {
-    print "      sha256 \"" linux_amd64 "\"";
-    next;
-}
-{ print; }
-' > "$FORMULA_FILE.new"
+  def install
+    bin.install "snet"
+  end
 
-mv "$FORMULA_FILE.new" "$FORMULA_FILE"
-rm -f "$FORMULA_FILE.tmp" "$FORMULA_FILE.bak"
+  test do
+    assert_match version.to_s, shell_output("#{bin}/snet version")
+  end
+end
+EOF
 
 echo "✅ Homebrew formula updated successfully!"
 echo ""
 echo "Next steps:"
-echo "1. Review the changes: git diff $FORMULA_FILE"
-echo "2. Commit the changes: git add $FORMULA_FILE && git commit -m 'chore: update Homebrew formula to $VERSION'"
-echo "3. Push to tap repository (if separate): git push origin main"
+echo "  cd $TAP_DIR"
+echo "  git diff Formula/snet.rb"
+echo "  git add Formula/snet.rb"
+echo "  git commit -m 'Update snet to $VERSION'"
+echo "  git push origin main"

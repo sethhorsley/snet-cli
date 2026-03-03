@@ -188,24 +188,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract SHA256 values
-        id: sha
-        run: |
-          echo "darwin_arm64=$(awk '{print $1}' artifacts/snet-darwin-arm64/snet-darwin-arm64.tar.gz.sha256)" >> $GITHUB_OUTPUT
-          echo "darwin_amd64=$(awk '{print $1}' artifacts/snet-darwin-amd64/snet-darwin-amd64.tar.gz.sha256)" >> $GITHUB_OUTPUT
-          echo "linux_arm64=$(awk '{print $1}'  artifacts/snet-linux-arm64/snet-linux-arm64.tar.gz.sha256)"   >> $GITHUB_OUTPUT
-          echo "linux_amd64=$(awk '{print $1}'  artifacts/snet-linux-amd64/snet-linux-amd64.tar.gz.sha256)"  >> $GITHUB_OUTPUT
-
       - name: Update Homebrew formula
-        uses: mislav/bump-homebrew-formula-action@v3
+        uses: dawidd6/action-homebrew-bump-formula@v3
         with:
-          formula-name: snet
-          homebrew-tap: sethhorsley/homebrew-tap
-          download-url: https://github.com/sethhorsley/snet-cli/releases/download/${{ steps.version.outputs.version}}/snet-darwin-arm64.tar.gz
-          commit-message: |
-            snet ${{ steps.version.outputs.version }}
-        env:
-          COMMITTER_TOKEN: ${{ secrets.TAP_REPO_TOKEN }}
+          token: ${{ secrets.TAP_REPO_TOKEN }}
+          tap: sethhorsley/homebrew-tap
+          formula: snet
+          tag: ${{ steps.version.outputs.version }}
+          revision: ${{ github.sha }}
+          force: false
 
   # Test builds on PRs
   test-build:
